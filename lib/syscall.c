@@ -203,3 +203,8 @@ sys_exec(const char *pathname, const char *argv[])
 #endif
 }
 
+unsigned int
+sys_time_msec(void)
+{
+	return (unsigned int) syscall(SYS_time_msec, 0, 0, 0, 0, 0, 0);
+}

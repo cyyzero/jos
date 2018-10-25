@@ -12,6 +12,7 @@
 #include <kern/syscall.h>
 #include <kern/console.h>
 #include <kern/sched.h>
+#include <kern/time.h>
 
 #include <kern/spinlock.h>
 
@@ -819,6 +820,14 @@ sys_exec(const char* pathname, const char*argv[])
 error:
 	sys_page_unmap(0, UTEMP);
 	return r;
+}
+
+// Return the current time.
+static int
+sys_time_msec(void)
+{
+	// LAB 6: Your code here.
+	panic("sys_time_msec not implemented");
 }
 
 // Dispatches to the correct kernel function, passing the arguments.
