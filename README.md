@@ -2,9 +2,10 @@
 
 ## 进度
 
-- [ ] lab1
-- [ ] lab2
-- [ ] lab3
-- [ ] lab4
-- [ ] lab5
-- [ ] lab6
+- [ ] lab 1
+- [ ] lab 2
+- [ ] lab 3
+- [ ] lab 4
+- [ ] lab 5
+- [ ] lab 6
+- [ ] lab 7
