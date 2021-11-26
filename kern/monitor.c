@@ -13,7 +13,6 @@
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
-
 struct Command {
 	const char *name;
 	const char *desc;
@@ -54,10 +53,25 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
-int
+int __attribute__((optimize("O0")))
+// int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
+	uint32_t eip;
+	uint32_t *ebp, *args;
+	ebp = (uint32_t *)read_ebp();
+	while (true)
+	{
+		eip = *(ebp + 1);
+		args = ebp + 2;
+		cprintf("ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n", ebp, eip, args[0], args[1], args[2], args[3], args[4]);
+		// in entry.S, ebp initialized to 0
+		if ((uint32_t)ebp == 0)
+		{
+			break;
+		}
+		ebp = (uint32_t *)*ebp;
+	}
 	return 0;
 }
 
