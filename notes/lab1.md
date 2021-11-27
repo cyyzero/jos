@@ -1,4 +1,4 @@
-# 笔记
+# lab1
 
 bootloader起始于0x7c00,512Byte。栈顶也放在0x7c00。
 
