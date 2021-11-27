@@ -87,8 +87,9 @@ stab_binsearch(const struct Stab *stabs, int *region_left, int *region_right,
 		// find rightmost region containing 'addr'
 		for (l = *region_right;
 		     l > *region_left && stabs[l].n_type != type;
-		     l--)
-			/* do nothing */;
+		     l--) {
+			/* do nothing */
+		}
 		*region_left = l;
 	}
 }
@@ -145,18 +146,21 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 
 	// Search within that file's stabs for the function definition
 	// (N_FUN).
-	lfun = lfile;
+	lfun = lfile + 1;
 	rfun = rfile;
 	stab_binsearch(stabs, &lfun, &rfun, N_FUN, addr);
 
 	if (lfun <= rfun) {
 		// stabs[lfun] points to the function name
 		// in the string table, but check bounds just in case.
-		if (stabs[lfun].n_strx < stabstr_end - stabstr)
+		if (stabs[lfun].n_strx < stabstr_end - stabstr) {
 			info->eip_fn_name = stabstr + stabs[lfun].n_strx;
+			// Search within the function definition for the line number.
+			// Ignore stuff after the colon.
+			info->eip_fn_namelen = strfind(info->eip_fn_name, ':') - info->eip_fn_name;
+		}
 		info->eip_fn_addr = stabs[lfun].n_value;
 		addr -= info->eip_fn_addr;
-		// Search within the function definition for the line number.
 		lline = lfun;
 		rline = rfun;
 	} else {
@@ -166,20 +170,19 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 		lline = lfile;
 		rline = rfile;
 	}
-	// Ignore stuff after the colon.
-	info->eip_fn_namelen = strfind(info->eip_fn_name, ':') - info->eip_fn_name;
 
 
 	// Search within [lline, rline] for the line number stab.
 	// If found, set info->eip_line to the right line number.
 	// If not found, return -1.
-	//
-	// Hint:
-	//	There's a particular stabs type used for line numbers.
-	//	Look at the STABS documentation and <inc/stab.h> to find
-	//	which one.
-	// Your code here.
-
+	// An N_SLINE symbol represents the start of a source line.
+	// The desc field contains the line number and 
+	// the value contains the code address for the start of that source line.
+	stab_binsearch(stabs, &lline, &rline, N_SLINE, addr);
+	if (lline > rline) {
+		return -1;
+	}
+	info->eip_line = stabs[lline].n_desc;
 
 	// Search backwards from the line number for the relevant filename
 	// stab.
