@@ -14,6 +14,7 @@ $(OBJDIR)/kern/kernel.img: $(OBJDIR)/kern/kernel $(OBJDIR)/boot/boot
 
 在内存中，bootloader起始于0x7c00,512Byte。栈顶也放在0x7c00。内核的elf header先被bootloader读到0x10000，然后会接着将一些必要的segment读到对应的内存处（起始于0x100000）。
 
+```
 +------------------+  <- 0xFFFFFFFF (4GB)
 |      32-bit      |
 |  memory mapped   |
@@ -43,6 +44,7 @@ $(OBJDIR)/kern/kernel.img: $(OBJDIR)/kern/kernel $(OBJDIR)/boot/boot
 |    Low Memory    |  <- 0x00010000 (kernel elf header)
 |                  |  <- 0x00007c00 (boot loader)
 +------------------+  <- 0x00000000
+```
 
 ---
 
