@@ -81,3 +81,15 @@ _warn(const char *file, int line, const char *fmt,...)
 	cprintf("\n");
 	va_end(ap);
 }
+
+void
+_log(const char *file, const char *func, int line, const char *fmt,...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	cprintf("%s:%d %s: ", file, line, func);
+	vcprintf(fmt, ap);
+	cprintf("\n");
+	va_end(ap);
+}

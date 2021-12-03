@@ -30,4 +30,7 @@ int	vfprintf(int fd, const char *fmt, va_list);
 // lib/readline.c
 char*	readline(const char *prompt);
 
+void _log(const char *file, const char *func, int line, const char *fmt,...);
+#define log(...) _log(__FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+
 #endif /* !JOS_INC_STDIO_H */
