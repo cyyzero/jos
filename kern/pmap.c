@@ -68,7 +68,7 @@ static void check_kern_pgdir(void);
 static physaddr_t check_va2pa(pde_t *pgdir, uintptr_t va);
 static void check_page(void);
 static void check_page_installed_pgdir(void);
-static void print_page_list(struct PageInfo*);
+static void sort_free_page_list(void);
 #define print_page_list(list) \
 	do { \
 		for (struct PageInfo *pp = (list); pp; pp = pp->pp_link) { \
@@ -175,6 +175,7 @@ mem_init(void)
 	// particular, we can now map memory using boot_map_region
 	// or page_insert
 	page_init();
+	sort_free_page_list();
 	// print_page_list(page_free_list);
 	log("page init finished");
 	check_page_free_list(1);
@@ -401,12 +402,12 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 	}
 	page->pp_ref = 1;
 	page->pp_link = NULL;
-	cprintf("allocated page: vaddr: %p, paddr: %x\n", page2kva(page), page2pa(page));
+	log("allocated page: vaddr: %p, paddr: %x\n", page2kva(page), page2pa(page));
 	// assert(page2pa(page) <= 4*1024*1024);
 	// map page_table virtual address
-	if (page_insert((pde_t*)KADDR(rcr3()), page, page2kva(page), PTE_W) != 0) {
-		panic("page_insert failed.");
-	}
+	// if (page_insert((pde_t*)KADDR(rcr3()), page, page2kva(page), PTE_W) != 0) {
+	// 	panic("page_insert failed.");
+	// }
 	page_table = page2kva(page);
 	*pde_entry = page2pa(page) | PTE_W | PTE_P;
 	return &page_table[PTX(va)];
@@ -483,7 +484,7 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 	}
 	*pte = page2pa(pp) | perm | PTE_P;
 	// page directory also modity permission flags
-	cprintf("%x %d %x\n", pgdir, PDX(va), &pgdir[PDX(va)]);
+	// cprintf("%x %d %x\n", pgdir, PDX(va), &pgdir[PDX(va)]);
 	pgdir[PDX(va)] |= perm;
 	return 0;
 }
@@ -962,4 +963,26 @@ check_page_installed_pgdir(void)
 	page_free(pp0);
 
 	cprintf("check_page_installed_pgdir() succeeded!\n");
+}
+
+// move [0, 4M) memory pages before others
+void sort_free_page_list(void)
+{
+	int count = 0;
+	// Move pages with lower addresses first in the free
+	// list, since entry_pgdir does not map all pages.
+	struct PageInfo *pp1, *pp2;
+	struct PageInfo **tp[2] = { &pp1, &pp2 };
+	for (struct PageInfo* pp = page_free_list; pp; pp = pp->pp_link) {
+		int pagetype = PDX(page2pa(pp)) >= 1;
+		*tp[pagetype] = pp;
+		tp[pagetype] = &pp->pp_link;
+		if (!pagetype) {
+			++count;
+		}
+	}
+	log("There're %d free page frames.", count);
+	*tp[1] = 0;
+	*tp[0] = pp2;
+	page_free_list = pp1;
 }

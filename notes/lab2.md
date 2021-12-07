@@ -12,3 +12,6 @@ entry.S中，临时的虚实地址映射为[0, 4M) => [0, 4M)， [0xF0000000, 0x
 - [0x100000, end + boot_allocated_pages)为内核加载的内存地址，不可分配 (别忘记在page_alloc启用前分配的一些页！！)
 - [end + boot_allocated_pages, MAX_PADDR]为自由分配
 
+---
+
+空闲页链表free_page_list需要重排，让[0, 4M)的内存优先分配。经过运行测试，有836个空闲页框是在[0, 4M)范围内。这些页在`page_alloc`之后能够正常使用，因为在一开始的`entrypgdir`里已经映射过。
