@@ -181,7 +181,6 @@ mem_init(void)
 	check_page_free_list(1);
 	check_page_alloc();
 	check_page();
-	panic("pause");
 
 	//////////////////////////////////////////////////////////////////////
 	// Now we set up virtual memory
@@ -193,6 +192,9 @@ mem_init(void)
 	//      (ie. perm = PTE_U | PTE_P)
 	//    - pages itself -- kernel RW, user NONE
 	// Your code goes here:
+	n = ROUNDUP(n, PGSIZE);
+	log("UPAGES: 0x%x, pages: 0x%x, size :%d", UPAGES, PADDR(pages), n);
+	boot_map_region(kern_pgdir, UPAGES, n, PADDR(pages), PTE_W);
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -205,6 +207,8 @@ mem_init(void)
 	//       overwrite memory.  Known as a "guard page".
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
+	log("STACK buttom: 0x%x, bootstack buttom: 0x%x, size: %d", KSTACKTOP-KSTKSIZE, PADDR(bootstack), KSTKSIZE);
+	boot_map_region(kern_pgdir, KSTACK, KSTKSIZE, PADDR(bootstack), PTE_W);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE.
@@ -214,6 +218,8 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
+	log("kernbase: 0x%x, paddr 0x0, size: %d", KERNBASE, MAX_VADDR-KERNBASE+1);
+	boot_map_region(kern_pgdir, KERNBASE, MAX_VADDR-KERNBASE+1, 0, PTE_W);
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -402,7 +408,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 	}
 	page->pp_ref = 1;
 	page->pp_link = NULL;
-	log("allocated page: vaddr: %p, paddr: %x\n", page2kva(page), page2pa(page));
+	log("allocated page: vaddr: %p, paddr: %x", page2kva(page), page2pa(page));
 	// assert(page2pa(page) <= 4*1024*1024);
 	// map page_table virtual address
 	// if (page_insert((pde_t*)KADDR(rcr3()), page, page2kva(page), PTE_W) != 0) {
@@ -427,9 +433,11 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
-	assert(va%PGSIZE == 0 && pa%PGSIZE == 0 && size%PGSIZE == 0);
+	assert(va%PGSIZE == 0);
+	assert(pa%PGSIZE == 0);
+	assert(size%PGSIZE == 0);
 	assert(MAX_VADDR - va + 1 >= size);
-	assert(npages * PGSIZE - pa + 1 >= size);
+	// assert(npages * PGSIZE - pa + 1 >= size);
 	assert(va >= UTOP);
 	for (size_t i = 0; i < size; i += PGSIZE, va += PGSIZE, pa += PGSIZE) {
 		pte_t* pte = pgdir_walk(pgdir, (void*)va, 1);
