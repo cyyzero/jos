@@ -32,3 +32,14 @@ entry.S中，临时的虚实地址映射为[0, 4M) => [0, 4M)， [0xF0000000, 0x
   `[KERNBASE, 2^32) => [0, 2^32 - KERNBASE)`。`KERNBASE`为0xF0000000，完整的映射需要(0xFFFFFFFF - 0xF0000000) / 4M  = 64个页框作为二级页表。
 
 总共分配了66个空闲页框，都能够落在[0, 4M)的映射内。
+
+
+---
+
+页表切换后映射关系如下表：
+
+| virtual address | physical address | size | flag | remark |
+| ---                     | ---                     | ---   | --- | --- |
+| 0xf0000000 - 0xffffffff | 0x00000000 - 0x0fffffff | 256 M | W P | 涵盖了目前所有的物理内存（128M） |
+| 0xefff8000 - 0xefffffff | 0x00110000 - 0x00117fff | 32K   | W P | 映射了内核的stack |
+| 0xef000000 - 0xef03ffff | 0x0011d000 - 0x0014ffff | 256k  | W P | 映射了pags结构数组 |

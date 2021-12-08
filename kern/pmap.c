@@ -973,7 +973,7 @@ check_page_installed_pgdir(void)
 	cprintf("check_page_installed_pgdir() succeeded!\n");
 }
 
-// move [0, 4M) memory pages before others
+// move [0, 4M) memory pages forward
 void sort_free_page_list(void)
 {
 	int count = 0;
