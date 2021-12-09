@@ -283,3 +283,9 @@ strtol(const char *s, char **endptr, int base)
 	return (neg ? -val : val);
 }
 
+int
+atoi(const char* s)
+{
+	return strtol(s, NULL, 0);
+}
+

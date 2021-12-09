@@ -10,8 +10,11 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
+
+static void print_memory_map(pde_t* pgdir, void* addr);
 
 struct Command {
 	const char *name;
@@ -24,6 +27,7 @@ static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Display stack backtrace", mon_backtrace},
+	{ "showmappings", "Display memory mapping, format: {begin address} {end addres}", mon_show_mappings},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -74,6 +78,32 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 		ebp = (uint32_t *)*ebp;
 	// in entry.S, ebp initialized to 0
 	} while (ebp != 0);
+	return 0;
+}
+
+int
+mon_show_mappings(int argc, char **argv, struct Trapframe *tf)
+{
+	if (argc < 2 || argc > 3) {
+		cprintf("format error, please givin one or two address");
+		return 0;
+	}
+	void *start_addr, *end_addr = 0;
+	start_addr = (void*)ROUNDDOWN(atoi(argv[1]), PGSIZE);
+	if (argc == 3) {
+		end_addr = (void*)ROUNDDOWN(atoi(argv[2]), PGSIZE);
+	} else {
+		end_addr = start_addr;
+	}
+	if (end_addr < start_addr) {
+		return 0;
+	}
+	size_t count = ((size_t)(end_addr - start_addr) >> PGSHIFT) + 1;
+	log("start: %x end: %x count: %d", start_addr, end_addr, count);
+	for (size_t i = 0; i < count; ++i, start_addr += PGSIZE) {
+		pde_t* pgdir = (pde_t*)KADDR(rcr3());
+		print_memory_map(pgdir, start_addr);
+	}
 	return 0;
 }
 
@@ -138,4 +168,49 @@ monitor(struct Trapframe *tf)
 			if (runcmd(buf, tf) < 0)
 				break;
 	}
+}
+
+static void
+print_memory_map(pde_t* pgdir, void* addr)
+{
+	pde_t *pde = &pgdir[PDX(addr)];
+	uint32_t flag = 0;
+	if (!(*pde & PTE_P)) {
+		return;
+	}
+	pte_t* page_table = (pte_t*)KADDR(PTE_ADDR(*pde));
+	pte_t* pte = &page_table[PTX(addr)];
+	if (!(*pte & PTE_P)) {
+		return;
+	}
+	flag = *pte & *pde;
+	cprintf("0x%08x\t0x%08x\t", addr, PTE_ADDR(*pte));
+	if (flag & PTE_G) {
+		cprintf(" G");
+	}
+	if (flag & PTE_PS) {
+		cprintf(" PS");
+	}
+	if (flag & PTE_D) {
+		cprintf(" D");
+	}
+	if (flag & PTE_A) {
+		cprintf(" A");
+	}
+	if (flag & PTE_PCD) {
+		cprintf(" PCD");
+	}
+	if (flag & PTE_PWT) {
+		cprintf(" PWT");
+	}
+	if (flag & PTE_U) {
+		cprintf(" U");
+	}
+	if (flag & PTE_W) {
+		cprintf(" W");
+	}
+	if (flag & PTE_P) {
+		cprintf(" P");
+	}
+	cprintf("\n");
 }
