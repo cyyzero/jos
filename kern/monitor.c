@@ -14,7 +14,11 @@
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
+// change permission options
+enum { SET_PERM, ADD_PERM, REMOVE_PERM, };
+
 static void print_memory_map(pde_t* pgdir, void* addr);
+static void change_permission(pde_t* pgdir, void* addr, int opt, uint32_t bits);
 
 struct Command {
 	const char *name;
@@ -28,6 +32,7 @@ static struct Command commands[] = {
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Display stack backtrace", mon_backtrace},
 	{ "showmappings", "Display memory mapping, format: {begin address} {end addres}", mon_show_mappings},
+	{ "changepageperm", "Change page table entry permissions", mon_change_page_perm},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -100,13 +105,78 @@ mon_show_mappings(int argc, char **argv, struct Trapframe *tf)
 	}
 	size_t count = ((size_t)(end_addr - start_addr) >> PGSHIFT) + 1;
 	log("start: %x end: %x count: %d", start_addr, end_addr, count);
+	pde_t* pgdir = (pde_t*)KADDR(rcr3());
 	for (size_t i = 0; i < count; ++i, start_addr += PGSIZE) {
-		pde_t* pgdir = (pde_t*)KADDR(rcr3());
 		print_memory_map(pgdir, start_addr);
 	}
 	return 0;
 }
 
+int
+mon_change_page_perm(int argc, char **argv, struct Trapframe *tf)
+{
+	if (argc < 2) {
+		return 0;
+	}
+	int opt;
+	int idx = 1;
+	uint32_t bits = 0;
+	void *start_addr, *end_addr;
+
+	// parse change option
+	if (strcmp(argv[idx], "--set") == 0) {
+		opt = SET_PERM;
+	} else if (strcmp(argv[idx], "--add") == 0) {
+		opt = ADD_PERM;
+	} else if (strcmp(argv[idx], "--remove") == 0) {
+		opt = REMOVE_PERM;
+	} else {
+		idx--;
+		// set bits as default
+		opt = SET_PERM;
+	}
+	++idx;
+
+	if (idx == argc) {
+		return 0;
+	}
+
+	// parse permissions
+	for (const char* p = argv[idx]; *p; ++p) {
+		switch (*p) {
+		case 'u':
+		case 'U':
+			bits |= PTE_U;
+			break;
+		case 'w':
+		case 'W':
+			bits |= PTE_W;
+			break;
+		default:
+			break;
+		}
+	}
+	idx++;
+	if (idx == argc) {
+		return 0;
+	}
+
+	// parse address range
+	start_addr = (void*)ROUNDDOWN(atoi(argv[idx++]), PGSIZE);
+	if (idx < argc) {
+		end_addr = (void*)ROUNDDOWN(atoi(argv[idx]), PGSIZE);
+	} else {
+		end_addr = start_addr;
+	}
+	pde_t *pgdir = (pde_t*)KADDR(rcr3());
+	size_t count = ((end_addr - start_addr) >> PGSHIFT) + 1;
+	for (size_t i = 0; i < count; ++i, start_addr += PGSIZE) {
+		log("change perm: addr %p, opt: %d, bits: %x", start_addr, opt, bits);
+		change_permission(pgdir, start_addr, opt, bits);
+		print_memory_map(pgdir, start_addr);
+	}
+	return 0;
+}
 
 
 /***** Kernel monitor command interpreter *****/
@@ -184,6 +254,7 @@ print_memory_map(pde_t* pgdir, void* addr)
 		return;
 	}
 	flag = *pte & *pde;
+	log("pde: %x  pte: %x", *pde, *pte);
 	cprintf("0x%08x\t0x%08x\t", addr, PTE_ADDR(*pte));
 	if (flag & PTE_G) {
 		cprintf(" G");
@@ -213,4 +284,45 @@ print_memory_map(pde_t* pgdir, void* addr)
 		cprintf(" P");
 	}
 	cprintf("\n");
+}
+
+static void change_permission(pde_t* pgdir, void* addr, int opt, uint32_t bits)
+{
+	pde_t *pde = &pgdir[PDX(addr)];
+	if (!(*pde & PTE_P)) {
+		return;
+	}
+	pte_t *page_table = (pte_t*)KADDR(PTE_ADDR(*pde));
+	pte_t *pte = &page_table[PTX(addr)];
+#define PTE_SET_PERM(pte, bit) \
+	if (bits & bit) \
+		*pte |= (bit); \
+	else \
+		*pte &= ~((pte_t)(bit));
+
+#define PTE_ADD_PERM(pte, bit) \
+	if (bits & (bit)) \
+		*pte |= ((bit));
+
+#define PTE_REMOVE_PERM(pte, bit) \
+	if (bits & bit) \
+		*pte &= ~((pte_t)(bit));
+	log("pde: %x ,  pte: %x , opt: %d, bits: %x", *pde, *pte, opt, bits);
+
+	switch (opt) {
+	case SET_PERM:
+		PTE_SET_PERM(pte, PTE_W);
+		PTE_SET_PERM(pte, PTE_U);
+		break;
+	case ADD_PERM:
+		PTE_ADD_PERM(pte, PTE_W);
+		PTE_ADD_PERM(pte, PTE_U);
+		break;
+	case REMOVE_PERM:
+		PTE_REMOVE_PERM(pte, PTE_W);
+		PTE_REMOVE_PERM(pte, PTE_U);
+		break;
+	default:
+		break;
+	}
 }
