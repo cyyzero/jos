@@ -173,7 +173,6 @@ mem_init(void)
 	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
 	envs_size = sizeof(struct Env) * NENV;
 	envs = boot_alloc(envs_size);
-	memset(envs, 0, envs_size);
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -353,6 +352,8 @@ page_alloc(int alloc_flags)
 	if (alloc_flags & ALLOC_ZERO) {
 		memset(page2kva(result), 0, PGSIZE);
 	}
+	result->pp_ref= 0;
+	result->pp_link = NULL;
 	return result;
 }
 
