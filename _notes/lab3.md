@@ -24,3 +24,47 @@ env初始化过程中重新加载了GDT，加入了用户态的code和data段，
 f011c330 D _binary_obj_user_hello_start
 f0124dfc D _binary_obj_user_buggyhello_start
 ```
+
+---
+
+利用`iret`指令实现了从0特权的内核到3特权的用户态。[`iret`在32位保护模式的流程为](https://www.felixcloutier.com/x86/iret:iretd)：
+
+```asm
+// 切换EIP CS
+EIP <- Pop()
+CS <- Pop()      ; (* 32-bit pop, high-order 16 bits discarded *)
+tempEFLAGS  <- Pop()
+
+// 跳转到低特权级
+if CS.RPL > CPL:
+    // 跳转到不同特权级，需要切换ESP SS
+    ESP <- Pop()
+    SS <- Pop()
+    // 切换EFLAGS
+    EFLAGS (CF, PF, AF, ZF, SF, TF, DF, OF, NT, RF, AC, ID) ← tempEFLAGS;
+    IF CPL <= IOPL:
+        EFLAGS(IF) <- tempEFLAGS
+    IF CPL == 0:
+        EFLAGS(IOPL) <- tempEFLAGS
+        EFLAGS(VIF, VIP) <- tempEFLAGS
+    // 切换CPL
+    CPL <- CS.RPL
+    // 检查其他段寄存器的权限
+    for seg in ES, FS, GS, and DS:
+        if DPL < CPL:
+            seg = null
+
+// 相同特权级
+if CS.RPL == CPL:
+    // EFLAGS的切换和上面一致
+    EFLAGS (CF, PF, AF, ZF, SF, TF, DF, OF, NT, RF, AC, ID) ← tempEFLAGS
+    IF CPL <= IOPL:
+        EFLAGS(IF) <- tempEFLAGS
+    IF CPL == 0:
+        EFLAGS(IOPL) <- tempEFLAGS
+        EFLAGS(VIF, VIP) <- tempEFLAGS
+
+// 不允许跳转到高特权
+if CS.RPL < CPL:
+    raise #GP exception
+```
