@@ -28,6 +28,8 @@
 	pushl $(num);							\
 	jmp _alltraps
 
+#define TH(name) TRAPHANDLER(name##_ENTRY, T_##name)
+
 /* Use TRAPHANDLER_NOEC for traps where the CPU doesn't push an error code.
  * It pushes a 0 in place of the error code, so the trap frame has the same
  * format in either case.
@@ -41,15 +43,48 @@
 	pushl $(num);							\
 	jmp _alltraps
 
+#define TH_N(name) TRAPHANDLER_NOEC(name##_ENTRY, T_##name)
+
 .text
 
 /*
- * Lab 3: Your code here for generating entry points for the different traps.
+ * Generate entry points for the different traps.
+ * Which exceptions has error_code? reference: https://wiki.osdev.org/Exceptions
  */
+TH_N(DIVIDE)
+TH_N(DEBUG)
+TH_N(NMI)
+TH_N(BRKPT)
+TH_N(OFLOW)
+TH_N(BOUND)
+TH_N(ILLOP)
+TH_N(DEVICE)
+TH(DBLFLT)
+# 9 is reserve
+TH(TSS)
+TH(SEGNP)
+TH(STACK)
+TH(GPFLT)
+TH(PGFLT)
+# 15 is reserved
+TH_N(FPERR)
+TH(ALIGN)
+TH_N(MCHK)
+TH_N(SIMDERR)
 
+# 48
+TH_N(SYSCALL)
 
-
-/*
- * Lab 3: Your code here for _alltraps
- */
+_alltraps:
+    # Push values to make the stack look like a struct Trapframe
+	pushl %ds
+	pushl %es
+	pushal
+	# load GD_KD into %ds and %es
+	movw $GD_KD, %ax
+	movw %ax, %ds
+	movw %ax, %ds
+	# pass a pointer to the Trapframe as an argument to trap()
+	pushl %esp
+	call trap
 

@@ -63,8 +63,40 @@ void
 trap_init(void)
 {
 	extern struct Segdesc gdt[];
+#define IDT_SET_TRAP_MEMBER(name) \
+	extern void name##_ENTRY(); \
+	SETGATE(idt[T_##name], 1, GD_KT, name##_ENTRY, 0);
+#define IDT_SET_TRAP_MEMBER_USER(name) \
+	extern void name##_ENTRY(); \
+	SETGATE(idt[T_##name], 1, GD_KT, name##_ENTRY, 3)
+#define IDT_SET_INTR_MEMBER(name) \
+	extern void name##_ENTRY(); \
+	SETGATE(idt[T_##name], 0, GD_KT, name##_ENTRY, 0)
+#define IDT_SET_INTR_MEMBER_USER(name) \
+	extern void name##_ENTRY(); \
+	SETGATE(idt[T_##name], 0, GD_KT, name##_ENTRY, 3)
 
-	// LAB 3: Your code here.
+
+	IDT_SET_TRAP_MEMBER(DIVIDE);
+	IDT_SET_TRAP_MEMBER(DEBUG);
+	IDT_SET_INTR_MEMBER(NMI);
+	IDT_SET_TRAP_MEMBER(BRKPT);
+	IDT_SET_TRAP_MEMBER(OFLOW);
+	IDT_SET_TRAP_MEMBER(BOUND);
+	IDT_SET_TRAP_MEMBER(ILLOP);
+	IDT_SET_TRAP_MEMBER(DEVICE);
+	IDT_SET_TRAP_MEMBER(DBLFLT);
+	IDT_SET_TRAP_MEMBER(TSS);
+	IDT_SET_TRAP_MEMBER(SEGNP);
+	IDT_SET_TRAP_MEMBER(STACK);
+	IDT_SET_TRAP_MEMBER(GPFLT);
+	IDT_SET_TRAP_MEMBER(PGFLT);
+	IDT_SET_TRAP_MEMBER(FPERR);
+	IDT_SET_TRAP_MEMBER(ALIGN);
+	IDT_SET_TRAP_MEMBER(MCHK);
+	IDT_SET_TRAP_MEMBER(SIMDERR);
+
+	IDT_SET_INTR_MEMBER_USER(SYSCALL);
 
 	// Per-CPU setup 
 	trap_init_percpu();

@@ -68,3 +68,14 @@ if CS.RPL == CPL:
 if CS.RPL < CPL:
     raise #GP exception
 ```
+
+---
+
+Q: What is the purpose of having an individual handler function for each exception/interrupt? (i.e., if all exceptions/interrupts were delivered to the same handler, what feature that exists in the current implementation could not be provided?)
+
+A: 需要给每个中断设置独立的handler，因为触发中断的时候cpu不会自动存储中断号。如果统一了handler，那handler就无法确定自己是由哪个中断所触发。
+
+Q: Did you have to do anything to make the user/softint program behave correctly? The grade script expects it to produce a general protection fault (trap 13), but softint's code says int $14. Why should this produce interrupt vector 13? What happens if the kernel actually allows softint's int $14 instruction to invoke the kernel's page fault handler (which is interrupt vector 14)?
+
+A: softint程序手动引发`int $14`指令，14号是page fault中断，理论上不应该由用户态主动跳转。`int`指令会检查IDT表项的DPL字段（硬件触发的中断不用检查这一项），14号的IDT表项DPL为0，不允许用户触发，所以会引发GP异常，跳到13号中断处理程序中。
+
