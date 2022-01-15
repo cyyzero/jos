@@ -201,7 +201,7 @@ mem_init(void)
 	n = ROUNDUP(pages_size, PGSIZE);
 	assert(n < PTSIZE);
 	log("UPAGES: 0x%x, pages: 0x%x, size: %d", UPAGES, PADDR(pages), n);
-	boot_map_region(kern_pgdir, UPAGES, n, PADDR(pages), PTE_W);
+	boot_map_region(kern_pgdir, UPAGES, n, PADDR(pages), PTE_U);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map the 'envs' array read-only by the user at linear address UENVS
