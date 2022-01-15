@@ -194,7 +194,7 @@ mem_init(void)
 	// Your code goes here:
 	n = ROUNDUP(n, PGSIZE);
 	log("UPAGES: 0x%x, pages: 0x%x, size :%d", UPAGES, PADDR(pages), n);
-	boot_map_region(kern_pgdir, UPAGES, n, PADDR(pages), PTE_W);
+	boot_map_region(kern_pgdir, UPAGES, n, PADDR(pages), PTE_U);
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
