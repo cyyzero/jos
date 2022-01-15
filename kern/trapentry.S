@@ -83,7 +83,7 @@ _alltraps:
 	# load GD_KD into %ds and %es
 	movw $GD_KD, %ax
 	movw %ax, %ds
-	movw %ax, %ds
+	movw %ax, %es
 	# pass a pointer to the Trapframe as an argument to trap()
 	pushl %esp
 	call trap
