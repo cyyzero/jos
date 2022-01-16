@@ -428,14 +428,14 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 	}
 	page->pp_ref = 1;
 	page->pp_link = NULL;
-	log("allocated page: vaddr: %p, paddr: %x", page2kva(page), page2pa(page));
+	log("allocated page for second page table: vaddr: %p, paddr: %x", page2kva(page), page2pa(page));
 	// assert(page2pa(page) <= 4*1024*1024);
 	// map page_table virtual address
 	// if (page_insert((pde_t*)KADDR(rcr3()), page, page2kva(page), PTE_W) != 0) {
 	// 	panic("page_insert failed.");
 	// }
 	page_table = page2kva(page);
-	*pde_entry = page2pa(page) | PTE_W | PTE_P;
+	*pde_entry = page2pa(page) | PTE_W | PTE_P | PTE_U;
 	return &page_table[PTX(va)];
 }
 
@@ -494,7 +494,7 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
-	log("va %x", va);
+	log("va %x, pp 0x%x", va, page2pa(pp));
 	assert((uintptr_t)va % PGSIZE == 0);
 	pte_t* pte;
 	uintptr_t paddr;
@@ -511,9 +511,6 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 		page_remove(pgdir, va);
 	}
 	*pte = page2pa(pp) | perm | PTE_P;
-	// page directory also modity permission flags
-	// cprintf("%x %d %x\n", pgdir, PDX(va), &pgdir[PDX(va)]);
-	pgdir[PDX(va)] |= perm;
 	return 0;
 }
 

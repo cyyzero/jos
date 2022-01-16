@@ -191,7 +191,8 @@ env_setup_vm(struct Env *e)
 	//    - The functions in kern/pmap.h are handy.
 
 	pde_t *pgdir = page2kva(p);
-	size_t n = (MAX_VADDR - UTOP + 1) >> PTSHIFT;
+	// BUG fixed. n MUST be byte size but not pde size
+	size_t n = ((MAX_VADDR - UTOP + 1) >> PTSHIFT) * sizeof(pde_t);
 	log("copy pde num: %d", n);
 	memcpy(pgdir + PDX(UTOP), kern_pgdir + PDX(UTOP), n);
 
@@ -298,11 +299,11 @@ region_alloc(struct Env *e, void *va, size_t len)
 			continue;
 		}
 		struct PageInfo *page = page_alloc(0);
-		page->pp_ref = 1;
 		if (!page) {
 			log("page_alloc failed");
 			return;
 		}
+		page->pp_ref = 1;
 		int err = page_insert(e->env_pgdir, page, va + i, PTE_U | PTE_W);
 		if (err) {
 			log("page_insert failed");
@@ -391,10 +392,11 @@ load_icode(struct Env *e, uint8_t *binary)
 			continue;
 		}
 		void *progaddr = binary + hdr->p_offset;
-		region_alloc(e, (void*)hdr->p_va, hdr->p_filesz);
+		region_alloc(e, (void*)hdr->p_va, hdr->p_memsz);
 		memcpy((void*)hdr->p_va, progaddr, hdr->p_filesz);
 		// initialize BSS
 		if (hdr->p_filesz < hdr->p_memsz) {
+			log("BSS: 0x%x, %d, %d", hdr->p_va, hdr->p_filesz, hdr->p_memsz);
 			memset((void*)hdr->p_va + hdr->p_filesz, 0, hdr->p_memsz - hdr->p_filesz);
 		}
 	}

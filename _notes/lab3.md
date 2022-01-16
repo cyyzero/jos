@@ -140,4 +140,13 @@ Push(CS, EIP)
 
 `boot.S`里面`CLI`关中断了。
 
+---
+
+Q3: The break point test case will either generate a break point exception or a general protection fault depending on how you initialized the break point entry in the IDT (i.e., your call to SETGATE from trap_init). Why? How do you need to set it up in order to get the breakpoint exception to work as specified above and what incorrect setup would cause it to trigger a general protection fault?
+A: 仍然同上面Q2原理一样，陷阱门描述符的DPL设置为3才能在用户态通过`int3`触发，否则引发GP。
+
+Q4: What do you think is the point of these mechanisms, particularly in light of what the user/softint test program does?
+A: 意义在于控制用户能主动触发哪些中断。
+
+
 

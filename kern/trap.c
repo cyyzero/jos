@@ -80,7 +80,7 @@ trap_init(void)
 	IDT_SET_TRAP_MEMBER(DIVIDE);
 	IDT_SET_TRAP_MEMBER(DEBUG);
 	IDT_SET_INTR_MEMBER(NMI);
-	IDT_SET_TRAP_MEMBER(BRKPT);
+	IDT_SET_TRAP_MEMBER_USER(BRKPT);
 	IDT_SET_TRAP_MEMBER(OFLOW);
 	IDT_SET_TRAP_MEMBER(BOUND);
 	IDT_SET_TRAP_MEMBER(ILLOP);
@@ -176,9 +176,16 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	switch (tf->tf_trapno) {
+	case T_BRKPT:
+		monitor(tf);
+		return;
 	case T_PGFLT:
+		log("page fault!!");
 		page_fault_handler(tf);
 		break;
+	case T_SYSCALL:
+		tf->tf_regs.reg_eax = syscall(tf->tf_regs.reg_eax, tf->tf_regs.reg_edx, tf->tf_regs.reg_ecx, tf->tf_regs.reg_ebx, tf->tf_regs.reg_edi, tf->tf_regs.reg_esi);
+		return;
 	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
@@ -203,7 +210,7 @@ trap(struct Trapframe *tf)
 	// the interrupt path.
 	assert(!(read_eflags() & FL_IF));
 
-	cprintf("Incoming TRAP frame at %p\n", tf);
+	cprintf("Incoming TRAP frame at %p, %s, eip: %p\n", tf, trapname(tf->tf_trapno), tf->tf_eip);
 
 	if ((tf->tf_cs & 3) == 3) {
 		// Trapped from user mode.
