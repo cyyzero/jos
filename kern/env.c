@@ -288,9 +288,10 @@ region_alloc(struct Env *e, void *va, size_t len)
 		log("arg Env is NULL");
 		return;
 	}
+	void* old_va = va;
 	assert((void*)MAX_VADDR - va + 1 >= len);
-	va = ROUNDDOWN(va, PGSIZE);
-	len = ROUNDUP(va + len, PGSIZE) - va;
+	va = ROUNDDOWN(old_va, PGSIZE);
+	len = ROUNDUP(old_va + len, PGSIZE) - va;
 	log("va: %p, size: %d", va, len);
 	for (int i = 0; i < len; i += PGSIZE) {
 		// if there exists a page frame, don't allocate a new one

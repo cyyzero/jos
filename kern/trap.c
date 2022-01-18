@@ -246,10 +246,8 @@ page_fault_handler(struct Trapframe *tf)
 	fault_va = rcr2();
 
 	// Handle kernel-mode page faults.
-	if (tf->tf_cs == 0) {
-
-	} else if (tf->tf_cs == 3) {
-
+	if ((tf->tf_cs & 0x3) == 0) {
+		panic("kernel memory access error, va %08x ip %08x", fault_va, tf->tf_eip);
 	}
 
 	// We've already handled kernel-mode exceptions, so if we get here,

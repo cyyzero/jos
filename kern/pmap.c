@@ -603,8 +603,62 @@ static uintptr_t user_mem_check_addr;
 int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
-	// LAB 3: Your code here.
+	pde_t *pgdir = env->env_pgdir;
+	pte_t *pt;
+	pde_t pde;
+	pte_t pte;
+	if (!pgdir) {
+		log("empty pgdir");
+		user_mem_check_addr = (uintptr_t)va;
+		return -E_FAULT;
+	}
+	if (va >= (void*)ULIM || (void*)ULIM - va < len) {
+		log("va: %p, len: %d is out of user space", va, len);
+		user_mem_check_addr = (uintptr_t)va;
+		return -E_FAULT;
+	}
+	const void *start, *end;
+	int pdenum, ptenum;
+	start = ROUNDDOWN(va, PGSIZE);
+	end = ROUNDUP(va + len, PGSIZE);
+	pdenum = (end - start) >> PTSHIFT;
+	log("check vaddr range: va: %p, len: %d, %p - %p", va, len, start, end);
+	for (int pdeno = 0; pdeno <= pdenum; ++pdeno) {
+		pde = pgdir[PDX(va) + pdeno];
+		if (!(pde & (perm | PTE_P))) {
+			if (pdeno == 0) {
+				user_mem_check_addr = (uintptr_t)va;
+			} else {
+				user_mem_check_addr = (uintptr_t)start + (pdeno << PTSHIFT);
+			}
+			log("pde perm check failed, 0x%x, %x", pde, perm | PTE_P);
+			return -E_FAULT;
+		}
+		pt = KADDR(PTE_ADDR(pde));
+		int pteno = 0;
+		if (pdeno == 0) {
+			pteno = PTX(va);
+		} else {
+			pteno = 0;
+		}
+		if (pdeno == pdenum) {
+			ptenum = PTX(end);
+		} else {
+			ptenum = NPTENTRIES;
+		}
 
+		for (; pteno < ptenum; ++pteno) {
+			pte = pt[pteno];
+			if (!(pte & (perm | PTE_P))) {
+				user_mem_check_addr = (uintptr_t)start + (pdeno << PTSHIFT) + (pteno << PGSHIFT);
+				if (user_mem_check_addr == ((uintptr_t)va & ~0xfff)) {
+					user_mem_check_addr = (uintptr_t)va;
+				}
+				log("pte perm check failed, %x, %x", pte, perm | PTE_P);
+				return -E_FAULT;
+			}
+		}
+	}
 	return 0;
 }
 
