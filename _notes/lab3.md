@@ -148,5 +148,52 @@ A: 仍然同上面Q2原理一样，陷阱门描述符的DPL设置为3才能在�
 Q4: What do you think is the point of these mechanisms, particularly in light of what the user/softint test program does?
 A: 意义在于控制用户能主动触发哪些中断。
 
+---
 
+`sysenter`和`sysexit`是用来快速陷入内核态的指令。使用这两个指令要求采用平坦模型，并且GDT设置成以下顺序：
+
+1. ring 0 code segment
+2. ring 0 data segment
+3. ring 3 code segment
+4. ring 3 data segment
+
+`sysenter`通过对MSR的写入来预先设定好进入内核态的栈和指令地址。具体来说，MSR中`IA32_SYSENTER_CS (0x174)`为跳转后的`CS`，`SS`自动为`CS`+8，不需要额外指定（所以需要按照上面的GDT顺序来设置）。`IA32_SYSENTER_ESP (0x175)`为跳转后的栈`ESP`，`IA32_SYSENTER_EIP (0x176)`为跳转后的指令地址`EIP`。跳转之后只改变上述设置的四个寄存器，既`CS:EIP`和`SS:ESP`；和一些EFLAG标志位，`EFLAGS.IF`=0, `EFLAGS.VM`=0, `EFLAGS.RF`=0。其他寄存器一律不变，而且也不会自动在栈上压入数据。这都是为了让跳转速度尽量快。
+
+简化之后的流程如下。实际上，为了高速，`CS`和`SS`都不会从GDT中加载，而是会使用平坦模型的默认值。软件开发者需要保证GDT中为平坦模型，并且顺序和上方描述的一致。
+
+```c
+CS  = IA32_SYSENTER_CS
+EIP = IA32_SYSENTER_EIP
+SS  = IA32_SYSENTER_CS + 8
+ESP = IA32_SYSENTER_ESP
+EFLAGS.IF = 0, EFLAGS.VM = 0, EFLAGS.RF = 0
+```
+
+`sysexit`也是会改变栈和指令地址。`CS`为`IA32_SYSENTER_CS+16`，`EIP`为`EDX`，`SS`为`IA32_SYSENTER_CS+24`，`ESP`为`ECX`。
+
+简化后的流程如下：
+
+```c
+CS  = IA32_SYSENTER_CS + 16
+EIP = EDX
+SS  = IA32_SYSENTER_CS + 24
+ESP = ECX
+```
+
+所以一般来说，用户态的调用者需要提供好返回所需要的`EIP`和`ESP`。
+
+JOS中可以利用这两个指令来实现快速系统调用，所有需要的参数都通过寄存器传递：
+
+```
+	eax                - syscall number
+	edx, ecx, ebx, edi - arg1, arg2, arg3, arg4
+	esi                - return pc
+	ebp                - return esp
+```
+
+由于通用寄存器数量的限制，无法将系统调用的5个参数都通过寄存器传递。目前只支持4个参数的系统调用，想要更多参数可以通过传地址的方式来实现。
+
+---
+
+gcc内联汇编中‘%=’输出一个数字，该数字对整个编译中的 asm 语句的每个实例都是唯一的。当创建本地标签并在生成多个汇编程序指令的单个模板中多次引用它们时，比如inline展开的内联汇编，此选项很有用。这种情况下，如果不给标签加`%=`做单独区分，会无法编译。
 

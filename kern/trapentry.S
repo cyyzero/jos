@@ -47,6 +47,24 @@
 
 .text
 
+.global sysenter_handler;
+.type sysenter_handler @function;
+.align 2;
+sysenter_handler:
+	pushl %ebp;
+	pushl %esi;
+	pushl $0;
+	pushl %edi;
+	pushl %ebx;
+	pushl %ecx;
+	pushl %edx;
+	pushl %eax;
+	call syscall;
+	add $24, %esp;
+	popl %edx;
+	popl %ecx;
+	sysexit;
+
 /*
  * Generate entry points for the different traps.
  * Which exceptions has error_code? reference: https://wiki.osdev.org/Exceptions

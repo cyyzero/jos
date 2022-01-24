@@ -9,6 +9,10 @@
 #include <kern/env.h>
 #include <kern/syscall.h>
 
+#define IA32_SYSENTER_CS  0x174
+#define IA32_SYSENTER_EIP 0x176
+#define IA32_SYSENTER_ESP 0x175
+
 static struct Taskstate ts;
 
 /* For debugging, so print_trapframe can distinguish between printing
@@ -58,6 +62,17 @@ static const char *trapname(int trapno)
 	return "(unknown trap)";
 }
 
+void
+sysenter_init(void)
+{
+	extern void sysenter_handler();
+	// set level 0 code segment
+	wrmsr(IA32_SYSENTER_CS, GD_KT, 0);
+	// set eip routine
+	wrmsr(IA32_SYSENTER_EIP, (uint32_t)sysenter_handler, 0);
+	// set esp
+	wrmsr(IA32_SYSENTER_ESP, KSTACKTOP, 0);
+}
 
 void
 trap_init(void)
@@ -100,6 +115,8 @@ trap_init(void)
 
 	// Per-CPU setup 
 	trap_init_percpu();
+	// setup fast syscall sysenter
+	sysenter_init();
 }
 
 // Initialize and load the per-CPU TSS and IDT
@@ -247,7 +264,7 @@ page_fault_handler(struct Trapframe *tf)
 
 	// Handle kernel-mode page faults.
 	if ((tf->tf_cs & 0x3) == 0) {
-		panic("kernel memory access error, va %08x ip %08x", fault_va, tf->tf_eip);
+		panic("kernel memory access error, va 0x%08x ip %08x", fault_va, tf->tf_eip);
 	}
 
 	// We've already handled kernel-mode exceptions, so if we get here,
