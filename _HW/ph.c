@@ -18,7 +18,7 @@ struct entry *table[NBUCKET];
 int keys[NKEYS];
 int nthread = 1;
 volatile int done;
-pthread_mutex_t lock;
+pthread_mutex_t lock[NBUCKET];
 
 double
 now()
@@ -56,9 +56,9 @@ void put(int key, int value)
   struct entry *e = malloc(sizeof(struct entry));
   e->key = key;
   e->value = value;
-  pthread_mutex_lock(&lock);
+  pthread_mutex_lock(&lock[i]);
   insert(key, value, &table[i], table[i], e);
-  pthread_mutex_unlock(&lock);
+  pthread_mutex_unlock(&lock[i]);
 }
 
 static struct entry*
@@ -116,7 +116,9 @@ main(int argc, char *argv[])
     fprintf(stderr, "%s: %s nthread\n", argv[0], argv[0]);
     exit(-1);
   }
-  pthread_mutex_init(&lock, NULL);
+  for (int i = 0; i < NBUCKET; ++i) {
+    pthread_mutex_init(&lock[i], NULL);
+  }
   nthread = atoi(argv[1]);
   tha = malloc(sizeof(pthread_t) * nthread);
   srandom(0);
