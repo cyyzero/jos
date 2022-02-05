@@ -330,27 +330,36 @@ page_init(void)
 	// Change the code to reflect this.
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
-	size_t i, protect_page_n;
+	size_t i, protect_page_n, mpentry_page_idx;
 	page_free_list = NULL;
 	// physical page 0
 	pages[0].pp_ref = 1;
 	pages[0].pp_link = NULL;
 	// [PAGESIZE, npages_basemem * PGSIZE)
-	for (i = 1; i < npages_basemem; i++) {
+	mpentry_page_idx = MPENTRY_PADDR >> PGSHIFT;
+	for (i = 1; i < mpentry_page_idx; ++i) {
+		pages[i].pp_ref = 0;
+		pages[i].pp_link = page_free_list;
+		page_free_list = &pages[i];
+	}
+	// mark the physical page at MPENTRY_PADDR in use
+	pages[i].pp_ref = 1;
+	pages[i].pp_link = NULL;
+	for (i++; i < npages_basemem; i++) {
 		pages[i].pp_ref = 0;
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
 	}
 	// [IOPHYSMEM, EXTPHYSMEM)
-	assert(npages_basemem * PGSIZE == IOPHYSMEM);
-	for (; i < EXTPHYSMEM / PGSIZE; i++) {
+	assert(npages_basemem << PGSHIFT == IOPHYSMEM);
+	for (; i < EXTPHYSMEM >> PGSHIFT; i++) {
 		pages[i].pp_ref = 1;
 		pages[i].pp_link = NULL;
 	}
 	// [EXTPHYSMEM, npages * PGSIZE)
 	// kernel is loaded at EXTPHYSMEM
 	// DON'T forget the pages allocated by boot_alloc
-	protect_page_n = (size_t)ROUNDUP(PADDR(boot_alloc(0)), PGSIZE) / PGSIZE;
+	protect_page_n = (size_t)ROUNDUP(PADDR(boot_alloc(0)), PGSIZE) >> PGSHIFT;
 	for (; i < protect_page_n; i++) {
 		pages[i].pp_ref = 1;
 		pages[i].pp_link = NULL;
@@ -644,9 +653,15 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// okay to simply panic if this happens).
 	//
 	// Hint: The staff solution uses boot_map_region.
-	//
-	// Your code here:
-	panic("mmio_map_region not implemented");
+	void *ret = (void*)base;
+	size = ROUNDUP(size, PGSIZE);
+	if (MMIOLIM - base < size) {
+		panic("MMIO map size if too large, base: %p, size: 0x%x", base, size);
+	}
+	boot_map_region(kern_pgdir, base, size, pa, PTE_W|PTE_PCD|PTE_PWT);
+	base += size;
+	return ret;
+
 }
 
 static uintptr_t user_mem_check_addr;
