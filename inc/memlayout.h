@@ -17,6 +17,7 @@
 #define GD_UT     0x18     // user text
 #define GD_UD     0x20     // user data
 #define GD_TSS0   0x28     // Task segment selector for CPU 0
+#define GD_TSS(id) (GD_TSS0 + (id) * sizeof(struct Segdesc))  // Task segment selector for CPU id
 
 /*
  * Virtual memory map:                                Permissions
@@ -96,7 +97,6 @@
 #define KSTACKTOP	KERNBASE
 #define KSTKSIZE	(8*PGSIZE)   		// size of a kernel stack
 #define KSTKGAP		(8*PGSIZE)   		// size of a kernel stack guard
-#define KSTACK		(KSTACKTOP - KSTKSIZE)
 
 // Memory-mapped IO.
 #define MMIOLIM		(KSTACKTOP - PTSIZE)
