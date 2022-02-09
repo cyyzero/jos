@@ -24,3 +24,11 @@ Hint: recall the differences between the link address and the load address that 
 ```
 
 不能直接用`call mp_main`，因为这样的话，`call`的机器码操作数会是一个偏移量，而链接器在计算偏移量是根据的原始位置，而不会是拷贝后的位置。使用`ljmpl   $(PROT_MODE_CSEG), $mp_main`之类的方式也能实现跳转。
+
+---
+
+```
+Question: It seems that using the big kernel lock guarantees that only one CPU can run the kernel code at a time. Why do we still need separate kernel stacks for each CPU? Describe a scenario in which using a shared kernel stack will go wrong, even with the protection of the big kernel lock. 
+```
+
+引发trap后，控制流进入各个trap各自的entry。如果是从用户态到内核态，此时也会进行运行栈的切换。如果两个用户程序分别同时引发了trap，陷入内核，此时还无法进行lock互斥，如果不对内核栈地址进行区分，他们会使用同一个栈。

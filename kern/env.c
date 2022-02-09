@@ -575,6 +575,7 @@ env_run(struct Env *e)
 	// Step 2: Use env_pop_tf() to restore the environment's
 	//	   registers and drop into user mode in the
 	//	   environment.
+	unlock_kernel();
 	env_pop_tf(&e->env_tf);
 
 	// Hint: This function loads the new environment's state from
