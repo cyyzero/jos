@@ -121,15 +121,15 @@ Push(CS, EIP)
 ( Push(ErrorCode))
 
 // 设置CPL，EFLAGS
-    CPL ← new code-segment DPL
-    CS(RPL) ← CPL
-    // interrupt会关闭IF，IF会屏蔽硬件中断
-    IF IDT gate is interrupt gate
-        IF <- 0 (* Interrupt flag set to 0, interrupts disabled *)
-    TF ← 0;
-    VM ← 0;
-    RF ← 0;
-    NT ← 0;
+CPL <- new code-segment DPL
+CS(RPL) <- CPL
+// interrupt会关闭IF，IF会屏蔽硬件中断
+IF IDT gate is interrupt gate
+    IF <- 0 (* Interrupt flag set to 0, interrupts disabled *)
+TF <- 0;
+VM <- 0;
+RF <- 0;
+NT <- 0;
 ```
 
 ---

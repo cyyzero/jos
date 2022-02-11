@@ -3,7 +3,7 @@
 #include <inc/syscall.h>
 #include <inc/lib.h>
 
-#define USE_SYSENTER
+// #define USE_SYSENTER
 
 static inline int32_t
 sysenter(int num,  int check, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4)

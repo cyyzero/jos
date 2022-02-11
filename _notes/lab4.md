@@ -27,8 +27,18 @@ Hint: recall the differences between the link address and the load address that 
 
 ---
 
-```
-Question: It seems that using the big kernel lock guarantees that only one CPU can run the kernel code at a time. Why do we still need separate kernel stacks for each CPU? Describe a scenario in which using a shared kernel stack will go wrong, even with the protection of the big kernel lock. 
-```
+> Question: It seems that using the big kernel lock guarantees that only one CPU can run the kernel code at a time. Why do we still need separate kernel stacks for each CPU? Describe a scenario in which using a shared kernel stack will go wrong, even with the protection of the big kernel lock.
 
 引发trap后，控制流进入各个trap各自的entry。如果是从用户态到内核态，此时也会进行运行栈的切换。如果两个用户程序分别同时引发了trap，陷入内核，此时还无法进行lock互斥，如果不对内核栈地址进行区分，他们会使用同一个栈。
+
+---
+
+> 3. In your implementation of env_run() you should have called lcr3(). Before and after the call to lcr3(), your code makes references (at least it should) to the variable e, the argument to env_run. Upon loading the %cr3 register, the addressing context used by the MMU is instantly changed. But a virtual address (namely e) has meaning relative to a given address context--the address context specifies the physical address to which the virtual address maps. Why can the pointer e be dereferenced both before and after the addressing switch?
+
+`UTOP`以上的地址空间的页表映射是相同的，所以页表切换前后`e`都可以正常访问。
+
+> 4. Whenever the kernel switches from one environment to another, it must ensure the old environment's registers are saved so they can be restored properly later. Why? Where does this happen?
+
+当中断发生的时候，会通过pushal等操作将寄存器存到栈上的`Trapframe`结构中，然后在`trap`函数中会将这部分数据存到`curenv->env_tf`。切换的时候会通过`pop`和`iret`等操作恢复`env_tf`中的寄存器数据。此时只能恢复通用寄存器的数据，不包括浮点等其它的寄存器。
+
+

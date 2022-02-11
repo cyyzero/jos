@@ -18,7 +18,6 @@
 #define IA32_SYSENTER_EIP 0x176
 #define IA32_SYSENTER_ESP 0x175
 
-static struct Taskstate ts;
 
 /* For debugging, so print_trapframe can distinguish between printing
  * a saved trapframe and printing the current trapframe and print some
@@ -169,7 +168,7 @@ trap_init_percpu(void)
 	current->cpu_ts.ts_iomb = sizeof(struct Taskstate);
 
 	// Initialize the TSS slot of the gdt.
-	gdt[(GD_TSS0 >> 3) + cpu_id] = SEG16(STS_T32A, (uint32_t) (&ts),
+	gdt[(GD_TSS0 >> 3) + cpu_id] = SEG16(STS_T32A, (uint32_t) (&current->cpu_ts),
 					sizeof(struct Taskstate) - 1, 0);
 	gdt[(GD_TSS0 >> 3) + cpu_id].sd_s = 0;
 
