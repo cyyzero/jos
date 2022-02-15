@@ -81,9 +81,16 @@ sys_exofork(void)
 	// status is set to ENV_NOT_RUNNABLE, and the register set is copied
 	// from the current environment -- but tweaked so sys_exofork
 	// will appear to return 0.
-
-	// LAB 4: Your code here.
-	panic("sys_exofork not implemented");
+	struct Env* e;
+	int err;
+	if ((err = env_alloc(&e, curenv->env_id)) < 0) {
+		log("env_alloc failed.");
+		return err;
+	}
+	e->env_status = ENV_NOT_RUNNABLE;
+	e->env_tf = curenv->env_tf;
+	e->env_tf.tf_regs.reg_eax = 0;
+	return e->env_id;
 }
 
 // Set envid's env_status to status, which must be ENV_RUNNABLE
@@ -101,9 +108,19 @@ sys_env_set_status(envid_t envid, int status)
 	// You should set envid2env's third argument to 1, which will
 	// check whether the current environment has permission to set
 	// envid's status.
+	struct Env *e;
+	int r;
 
-	// LAB 4: Your code here.
-	panic("sys_env_set_status not implemented");
+	if ((r = envid2env(envid, &e, 1)) < 0) {
+		log("bad envid, 0x%x", envid);
+		return r;
+	}
+	if (status != ENV_RUNNABLE || status != ENV_NOT_RUNNABLE) {
+		log("env 0x%x: bad param status: %d", envid, status);
+		return -E_INVAL;
+	}
+	e->env_status = status;
+	return 0;
 }
 
 // Set the page fault upcall for 'envid' by modifying the corresponding struct
@@ -282,6 +299,16 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	case SYS_yield:
 		sys_yield();
 		return 0;
+	case SYS_exofork:
+		return sys_exofork();
+	case SYS_env_set_status:
+		return sys_env_set_status((envid_t)a1, a2);
+	case SYS_page_alloc:
+		return sys_page_alloc((envid_t)a1, (void*)a2, a3);
+	case SYS_page_map:
+		return sys_page_map((envid_t)a1, (void*)a2, (envid_t)a3, (void*)a4, a5);
+	case SYS_page_unmap:
+		return sys_page_unmap((envid_t)a1, (void*)a2);
 	default:
 		return -E_INVAL;
 	}
