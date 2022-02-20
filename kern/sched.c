@@ -46,8 +46,8 @@ sched_yield(void)
 			goto found;
 		}
 	}
-	if (envs[id].env_status == ENV_RUNNING) {
-		idle = envs + id;
+	if (curenv && curenv->env_status == ENV_RUNNING) {
+		idle = curenv;
 		goto found;
 	}
 
@@ -56,7 +56,8 @@ sched_yield(void)
 	sched_halt();
 
 found:
-	log("switch to runnable env, id: 0x%x", idle->env_id);
+	assert(!(idle->env_status == ENV_RUNNING && idle->env_cpunum != thiscpu->cpu_id));
+	log("cpuid: %d, switch to runnable env, id: 0x%x", thiscpu->cpu_id, idle->env_id);
 	env_run(idle);
 }
 
