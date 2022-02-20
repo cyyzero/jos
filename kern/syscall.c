@@ -12,6 +12,42 @@
 #include <kern/console.h>
 #include <kern/sched.h>
 
+// Check page table entry perms
+// PTE_U | PTE_P must be set, PTE_AVAIL | PTE_W may or may not be set,
+// but no other bits may be set.  See PTE_SYSCALL in inc/mmu.h.
+#define CHECK_ARG_PERM(perm) \
+do { \
+	if (((perm) & ~PTE_SYSCALL) || !((perm) & PTE_P) || !((perm) & PTE_U)) {  \
+		log("illegal perm: 0x%x", (perm)); \
+		return -E_INVAL; \
+	} \
+} while (0)
+
+// Check virtual address, must be page aligned and under UTOP
+#define CHECK_ARG_VA(va) \
+do { \
+	if ((uint32_t)(va) & 0Xfff) { \
+		log("va: %p is not aligned.", (va)); \
+		return -E_INVAL; \
+	} \
+	if ((va) >= (void*)UTOP) { \
+		log("va: %p is above UTOP.", (va)); \
+		return -E_INVAL; \
+	} \
+} while (0)
+
+// get page_dir from envid
+pde_t* envid2pgdir(envid_t envid)
+{
+	struct Env *e;
+	int err;
+	if ((err = envid2env(envid, &e, 1)) < 0) {
+		log("bad envid: 0x%x", envid);
+		return NULL;
+	}
+	return e->env_pgdir;
+}
+
 // Print a string to the system console.
 // The string is exactly 'len' characters long.
 // Destroys the environment on memory errors.
@@ -115,7 +151,7 @@ sys_env_set_status(envid_t envid, int status)
 		log("bad envid, 0x%x", envid);
 		return r;
 	}
-	if (status != ENV_RUNNABLE || status != ENV_NOT_RUNNABLE) {
+	if (status != ENV_RUNNABLE && status != ENV_NOT_RUNNABLE) {
 		log("env 0x%x: bad param status: %d", envid, status);
 		return -E_INVAL;
 	}
@@ -164,8 +200,31 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	//   If page_insert() fails, remember to free the page you
 	//   allocated!
 
-	// LAB 4: Your code here.
-	panic("sys_page_alloc not implemented");
+	struct Env *e;
+	struct PageInfo *page;
+	pde_t* pgdir;
+	int err;
+	// check va
+	CHECK_ARG_VA(va);
+
+	// check perm
+	CHECK_ARG_PERM(perm);
+
+	pgdir = envid2pgdir(envid);
+	if (!pgdir) {
+		return -E_BAD_ENV;
+	}
+	page = page_alloc(ALLOC_ZERO);
+	if (!page) {
+		log("No availble page.");
+		return -E_NO_MEM;
+	}
+	if ((err = page_insert(pgdir, page, va, perm)) < 0) {
+		page_free(page);
+		log("No aviable page allocated for pte table");
+		return err;
+	}
+	return 0;
 }
 
 // Map the page of memory at 'srcva' in srcenvid's address space
@@ -195,8 +254,35 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	//   Use the third argument to page_lookup() to
 	//   check the current permissions on the page.
 
-	// LAB 4: Your code here.
-	panic("sys_page_map not implemented");
+	pde_t *srcpgdir, *dstpgdir;
+	pte_t *srcpte, *dstpte;
+	struct PageInfo *srcpage;
+	// check srcva and dstva
+	CHECK_ARG_VA(srcva);
+	CHECK_ARG_VA(dstva);
+	// check perm
+	CHECK_ARG_PERM(perm);
+
+	if ((srcpgdir = envid2pgdir(srcenvid)) == NULL) {
+		return -E_BAD_ENV;
+	}
+	if ((dstpgdir = envid2pgdir(dstenvid)) == NULL) {
+		return -E_BAD_ENV;
+	}
+	srcpage = page_lookup(srcpgdir,srcva, &srcpte);
+	if (!srcpage) {
+		log("src va: %p doesn't mapped.", srcva);
+		return -E_INVAL;
+	}
+	// check permision, must not map read-only page as writable 
+	if (perm & PTE_W && !(*srcpte & PTE_W)) {
+		log("dstva is read-only, but mapped as writable");
+		return -E_INVAL;
+	}
+	if (page_insert(dstpgdir, srcpage, dstva, perm) < 0) {
+		return -E_NO_MEM;
+	}
+	return 0;
 }
 
 // Unmap the page of memory at 'va' in the address space of 'envid'.
@@ -210,9 +296,16 @@ static int
 sys_page_unmap(envid_t envid, void *va)
 {
 	// Hint: This function is a wrapper around page_remove().
-
-	// LAB 4: Your code here.
-	panic("sys_page_unmap not implemented");
+	pde_t *pgdir;
+	
+	CHECK_ARG_VA(va);
+	pgdir = envid2pgdir(envid);
+	if (!pgdir) {
+		log("env %0x has no pgdir.", envid);
+		return -E_BAD_ENV;
+	}
+	page_remove(pgdir, va);
+	return 0;
 }
 
 // Try to send 'value' to the target env 'envid'.
