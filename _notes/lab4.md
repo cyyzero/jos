@@ -41,4 +41,6 @@ Hint: recall the differences between the link address and the load address that 
 
 当中断发生的时候，会通过pushal等操作将寄存器存到栈上的`Trapframe`结构中，然后在`trap`函数中会将这部分数据存到`curenv->env_tf`。切换的时候会通过`pop`和`iret`等操作恢复`env_tf`中的寄存器数据。此时只能恢复通用寄存器的数据，不包括浮点等其它的寄存器。
 
+---
 
+JOS支持用户自定义的page fault处理函数。在处理page fault时，内核会切换到用户态的用户处理函数，包括`cs:ip`和`ss:sp`的切换，`UXSTACKTOP-PGSIZE`这一页作为user exception stack。要防止嵌套page fault，所以需要检查`tf_esp`是否已经在user exception stack，以调整切换后的栈顶。还需要在user exception stack上写入trap前的寄存器状态，以便用户处理完错误后恢复。切换后完全就是用户态，用户可以申请页等方式处理page fault。处理结束后利用一点小技巧，恢复状态并直接跳转回trap前的指令。
