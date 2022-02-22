@@ -373,8 +373,46 @@ page_fault_handler(struct Trapframe *tf)
 	//   To change what the user environment runs, modify 'curenv->env_tf'
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
-	// LAB 4: Your code here.
+	struct UTrapframe *utf;
 
+	// If there's no page fault upcall, destroy env
+	if (!curenv->env_pgfault_upcall) {
+		log("there's no pg_fault_upcall.");
+		goto destroy_env;
+	}
+	// if the environment didn't allocate a page for its exception stack or 
+	// can't write to it, destroy env
+	if (user_mem_check(curenv, (void*)(UXSTACKTOP - PGSIZE), PGSIZE, PTE_W) < 0) {
+		log("there's no pg_fault_upcall.");
+		goto destroy_env;
+	}
+	// if the exception stack overflows, destroy env
+	if (tf->tf_esp < UXSTACKTOP-PGSIZE && tf->tf_esp >= USTACKTOP) {
+		log("user exception stack overflow, %p", tf->tf_esp);
+		goto destroy_env;
+	}
+	
+	// set user exception stack
+	// recursive case, 
+	if (tf->tf_esp >= UXSTACKTOP-PGSIZE && tf->tf_esp < UXSTACKTOP) {
+		utf = (void*)tf->tf_esp - 4 - sizeof(struct UTrapframe);
+	} else {
+		utf = (void*)UXSTACKTOP - sizeof(struct UTrapframe);
+	}
+	utf->utf_eflags = tf->tf_eflags;
+	utf->utf_eip = tf->tf_eip;
+	utf->utf_err = tf->tf_err;
+	utf->utf_esp = tf->tf_esp;
+	utf->utf_fault_va = fault_va;
+	utf->utf_regs = tf->tf_regs;
+	tf->tf_esp = (uintptr_t)utf;
+	tf->tf_eip = (uintptr_t)curenv->env_pgfault_upcall;
+	// log("cs: 0x%x, ip: 0x%x, ss: 0x%x, sp: 0x:%x", tf->tf_cs, tf->tf_eip, tf->tf_ss, tf->tf_esp);
+	assert(tf->tf_ss == (GD_UD | 0x3));
+	assert(tf->tf_cs == (GD_UT | 0x3));
+	env_run(curenv);
+
+destroy_env:
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",
 		curenv->env_id, fault_va, tf->tf_eip);
