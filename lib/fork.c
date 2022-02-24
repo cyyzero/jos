@@ -116,7 +116,6 @@ duppage(envid_t envid, unsigned pn, int is_cow)
 envid_t
 fork(void)
 {
-	extern unsigned char end[];
 	int r;
 	envid_t eid;
 	set_pgfault_handler(pgfault);
@@ -187,6 +186,68 @@ fork(void)
 int
 sfork(void)
 {
-	panic("sfork not implemented");
-	return -E_INVAL;
+	int r;
+	envid_t eid;
+	set_pgfault_handler(pgfault);
+	eid = sys_exofork();
+	if (eid < 0) {
+		cprintf("fork failed, %e", eid);
+		return eid;
+	}
+	// child
+	if (eid == 0) {
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return eid;
+	}
+
+	// parent
+	// iterate each pde, map writable pages
+	for (int pdeno = 0; pdeno <= PDX(UTOP-1); ++pdeno) {
+		// if present, iterate each pte
+		if (uvpd[pdeno] & (PTE_P | PTE_W | PTE_U)) {
+			int entry_num = NPTENTRIES;
+			if (pdeno == PDX(UTOP-1)) {
+				entry_num = PTX(UTOP-1) + 1;
+			}
+			for (int pteno = 0; pteno < entry_num; ++pteno) {
+				int pn = pdeno * NPDENTRIES + pteno;
+				pte_t pte = uvpt[pn];
+				if (pte & (PTE_P | PTE_U)) {
+					// user exception stack and user stack
+					if (pn == ((UXSTACKTOP - PGSIZE) >> PGSHIFT)) {
+						continue;
+					}
+					if (pn == ((USTACKTOP - PGSIZE) >> PGSHIFT)) {
+						duppage(eid, pn, 1);
+						continue;
+					}
+					int perm = pte & PTE_SYSCALL;
+					void* va =  (void*)((pdeno << PDXSHIFT) | (pteno << PTXSHIFT));
+					if ((r = sys_page_map(0, va, eid, va, PTE_P | PTE_U | PTE_W)) < 0) {
+						return r;
+					}
+				}
+			}
+		}
+	}
+
+	// map user exception stack for child
+	r = sys_page_alloc(eid, (void*)(UXSTACKTOP -PGSIZE), PTE_P | PTE_U | PTE_W);
+	if (r < 0) {
+		cprintf("map user exception stack failed, %e.\n", r);
+		return r;
+	}
+	extern void _pgfault_upcall(void);
+	// set the pgfault_handler for child
+	r = sys_env_set_pgfault_upcall(eid, _pgfault_upcall);
+	if (r < 0) {
+		cprintf("env set pgfault upcall failed, %e.\n", r);
+		return r;
+	}
+	r = sys_env_set_status(eid, ENV_RUNNABLE);
+	if (r < 0) {
+		cprintf("set child status failed, %e.\n", r);
+		return r;
+	}
+	return eid;
 }
