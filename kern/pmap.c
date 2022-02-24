@@ -694,9 +694,9 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 	const void *start, *end;
 	int pdenum, ptenum;
 	start = ROUNDDOWN(va, PGSIZE);
-	end = ROUNDUP(va + len, PGSIZE);
+	end = ROUNDDOWN(va + len-1, PGSIZE);
 	pdenum = (end - start) >> PTSHIFT;
-	log("check vaddr range: va: %p, len: %d, %p - %p", va, len, start, end);
+	log("check vaddr range: va: %p, len: %d, pdenum: %d, %p - %p", va, len, pdenum, start, end);
 	for (int pdeno = 0; pdeno <= pdenum; ++pdeno) {
 		pde = pgdir[PDX(va) + pdeno];
 		if (!(pde & (perm | PTE_P))) {
@@ -711,12 +711,12 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 		pt = KADDR(PTE_ADDR(pde));
 		int pteno = 0;
 		if (pdeno == 0) {
-			pteno = PTX(va);
+			pteno = PTX(start);
 		} else {
 			pteno = 0;
 		}
 		if (pdeno == pdenum) {
-			ptenum = PTX(end);
+			ptenum = PTX(end) + 1;
 		} else {
 			ptenum = NPTENTRIES;
 		}
@@ -724,7 +724,7 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 		for (; pteno < ptenum; ++pteno) {
 			pte = pt[pteno];
 			if (!(pte & (perm | PTE_P))) {
-				user_mem_check_addr = (uintptr_t)start + (pdeno << PTSHIFT) + (pteno << PGSHIFT);
+				user_mem_check_addr = ((PDX(va) + pdeno) << PTSHIFT) + (pteno << PGSHIFT);
 				if (user_mem_check_addr == ((uintptr_t)va & ~0xfff)) {
 					user_mem_check_addr = (uintptr_t)va;
 				}
@@ -751,6 +751,21 @@ user_mem_assert(struct Env *env, const void *va, size_t len, int perm)
 			"va %08x\n", env->env_id, user_mem_check_addr);
 		env_destroy(env);	// may not return
 	}
+}
+
+// check permisions for address space [va, va + len), store the first wrong address
+int user_mem_check2(struct Env*env, const void*va, size_t len, int perm, uintptr_t* err_addr)
+{
+	int r;
+	if ((r = user_mem_check(env, va, len, perm | PTE_U)) < 0) {
+		cprintf("[%08x] user_mem_check assertion failure for "
+			"va %08x\n", env->env_id, user_mem_check_addr);
+		if (err_addr) {
+			*err_addr = user_mem_check_addr;
+		}
+		return r;
+	}
+	return 0;
 }
 
 

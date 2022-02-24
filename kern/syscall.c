@@ -37,7 +37,8 @@ do { \
 } while (0)
 
 // get page_dir from envid
-pde_t* envid2pgdir(envid_t envid)
+static pde_t*
+envid2pgdir(envid_t envid)
 {
 	struct Env *e;
 	int err;
@@ -46,6 +47,33 @@ pde_t* envid2pgdir(envid_t envid)
 		return NULL;
 	}
 	return e->env_pgdir;
+}
+
+// Convert syscall description from number
+static const char*
+syscallname(int no)
+{
+#define RET_SYSCALL_NAME(no) \
+case no: \
+	return #no;
+	switch (no)
+	{
+		RET_SYSCALL_NAME(SYS_cputs);
+		RET_SYSCALL_NAME(SYS_cgetc);
+		RET_SYSCALL_NAME(SYS_getenvid);
+		RET_SYSCALL_NAME(SYS_env_destroy);
+		RET_SYSCALL_NAME(SYS_page_alloc);
+		RET_SYSCALL_NAME(SYS_page_map);
+		RET_SYSCALL_NAME(SYS_page_unmap);
+		RET_SYSCALL_NAME(SYS_exofork);
+		RET_SYSCALL_NAME(SYS_env_set_status);
+		RET_SYSCALL_NAME(SYS_env_set_pgfault_upcall);
+		RET_SYSCALL_NAME(SYS_yield);
+		RET_SYSCALL_NAME(SYS_ipc_try_send);
+		RET_SYSCALL_NAME(SYS_ipc_recv);
+		default:
+			return "Unknown";
+	}
 }
 
 // Print a string to the system console.
@@ -177,6 +205,8 @@ sys_env_set_pgfault_upcall(envid_t envid, void *func)
 		log("bad envid, 0x%x", envid);
 		return r;
 	}
+	// check permison for page of func
+	user_mem_assert(e, func, PGSIZE, PTE_U | PTE_P);
 	e->env_pgfault_upcall = func;
 	return 0;
 }
@@ -383,7 +413,7 @@ sys_ipc_recv(void *dstva)
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
 {
-	log("syscall No.%x", syscallno);
+	log("syscall %s", syscallname(syscallno));
 	// Call the function corresponding to the 'syscallno' parameter.
 	// Return any appropriate return value.
 	switch (syscallno) {

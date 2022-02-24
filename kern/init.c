@@ -16,11 +16,12 @@
 #include <kern/spinlock.h>
 
 static void boot_aps(void);
-
+struct spinlock log_lock;
 
 void
 i386_init(void)
 {
+	spin_initlock(&log_lock);
 	// Initialize the console.
 	// Can't call cprintf until after we do this!
 	cons_init();
@@ -167,8 +168,16 @@ _log(const char *file, const char *func, int line, const char *fmt,...)
 	va_list ap;
 
 	va_start(ap, fmt);
+	spin_lock(&log_lock);
+	if (thiscpu) {
+		cprintf("cpu %d ", thiscpu->cpu_id);
+	}
+	if (curenv) {
+		cprintf(" env 0x%x : ", curenv->env_id);
+	}
 	cprintf("%s:%d %s: ", file, line, func);
 	vcprintf(fmt, ap);
+	spin_unlock(&log_lock);
 	cprintf("\n");
 	va_end(ap);
 }

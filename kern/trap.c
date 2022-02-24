@@ -287,7 +287,7 @@ trap(struct Trapframe *tf)
 	// the interrupt path.
 	assert(!(read_eflags() & FL_IF));
 
-	cprintf("Incoming TRAP frame at %p, %s, eip: %p\n", tf, trapname(tf->tf_trapno), tf->tf_eip);
+	log("Incoming TRAP frame at %p, %s, eip: %p", tf, trapname(tf->tf_trapno), tf->tf_eip);
 
 	if ((tf->tf_cs & 3) == 3) {
 		// Trapped from user mode.
@@ -374,6 +374,7 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	struct UTrapframe *utf;
+	int r;
 
 	// If there's no page fault upcall, destroy env
 	if (!curenv->env_pgfault_upcall) {
@@ -382,8 +383,8 @@ page_fault_handler(struct Trapframe *tf)
 	}
 	// if the environment didn't allocate a page for its exception stack or 
 	// can't write to it, destroy env
-	if (user_mem_check(curenv, (void*)(UXSTACKTOP - PGSIZE), PGSIZE, PTE_W) < 0) {
-		log("there's no pg_fault_upcall.");
+	if ((r = user_mem_check2(curenv, (void*)(UXSTACKTOP - PGSIZE), PGSIZE, PTE_P | PTE_U | PTE_W, NULL)) < 0) {
+		log("there's no mapped user exception stack");
 		goto destroy_env;
 	}
 	// if the exception stack overflows, destroy env

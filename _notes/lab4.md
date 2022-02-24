@@ -44,3 +44,7 @@ Hint: recall the differences between the link address and the load address that 
 ---
 
 JOS支持用户自定义的page fault处理函数。在处理page fault时，内核会切换到用户态的用户处理函数，包括`cs:ip`和`ss:sp`的切换，`UXSTACKTOP-PGSIZE`这一页作为user exception stack。要防止嵌套page fault，所以需要检查`tf_esp`是否已经在user exception stack，以调整切换后的栈顶。还需要在user exception stack上写入trap前的寄存器状态，以便用户处理完错误后恢复。切换后完全就是用户态，用户可以申请页等方式处理page fault。处理结束后利用一点小技巧，恢复状态并直接跳转回trap前的指令。
+
+---
+
+JOS初始化env的时候，会设置UTOP以上的内核地址空间。实现fork之类的函数，需要复制UTOP以下的地址空间。利用uvpt和uvpd可以直接访问页目录和页表。COW-fork的基本原理：调用fork后，父进程复制用户态的地址空间映射给子进程，可写的页映射成PTE_COW，只读的页则照旧。当处理page fault时，如果出错的地址所在页映射时PTE_COW，就复制这一页，并且出错的地址映射到此页上。
