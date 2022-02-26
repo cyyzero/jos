@@ -48,3 +48,27 @@ JOS支持用户自定义的page fault处理函数。在处理page fault时，内
 ---
 
 JOS初始化env的时候，会设置UTOP以上的内核地址空间。实现fork之类的函数，需要复制UTOP以下的地址空间。利用uvpt和uvpd可以直接访问页目录和页表。COW-fork的基本原理：调用fork后，父进程复制用户态的地址空间映射给子进程，可写的页映射成PTE_COW，只读的页则照旧。当处理page fault时，如果出错的地址所在页映射时PTE_COW，就复制这一页，并且出错的地址映射到此页上。
+
+---
+
+```c
+#define thisenv (*env)
+
+const volatile struct Env **env;
+void
+libmain(int argc, char **argv)
+{
+    const volatile struct Env *stack_env;
+    stack_env = &envs[ENVX(eid)];
+    env = &stack_env;
+
+    // ...
+    // call user main routine
+    umain(argc, argv);
+
+    // exit gracefully
+    exit();
+}
+```
+
+实现`sfork`时，全局变量共享，运行栈COW。所以`thisenv`替换成宏，访问栈上的数据，以保证每个进程的`thisenv`是独立的。

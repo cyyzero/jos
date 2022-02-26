@@ -25,7 +25,12 @@ void	umain(int argc, char **argv);
 
 // libmain.c or entry.S
 extern const char *binaryname;
+#ifdef SFORK
+extern const volatile struct Env **env;
+#define thisenv (*env)
+#else
 extern const volatile struct Env *thisenv;
+#endif
 extern const volatile struct Env envs[NENV];
 extern const volatile struct PageInfo pages[];
 
