@@ -23,13 +23,18 @@ do { \
 	} \
 } while (0)
 
+#define CHECK_ARG_VA_ALIGNED(va) \
+do { \
+if ((uint32_t)(va) & 0Xfff) { \
+	log("va: %p is not aligned.", (va)); \
+	return -E_INVAL; \
+} \
+} while (0)
+
 // Check virtual address, must be page aligned and under UTOP
 #define CHECK_ARG_VA(va) \
 do { \
-	if ((uint32_t)(va) & 0Xfff) { \
-		log("va: %p is not aligned.", (va)); \
-		return -E_INVAL; \
-	} \
+	CHECK_ARG_VA_ALIGNED(va); \
 	if ((va) >= (void*)UTOP) { \
 		log("va: %p is above UTOP.", (va)); \
 		return -E_INVAL; \
@@ -386,8 +391,53 @@ sys_page_unmap(envid_t envid, void *va)
 static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
-	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	struct Env *e;
+	struct Env *cur;
+	pte_t *pte;
+	int r;
+
+	if ((r = envid2env(envid, &e, 0)) < 0) {
+		log("bad envid: %d, %e", envid, r);
+		return r;
+	}
+	cur = curenv;
+	if (!e->env_ipc_recving || e->env_status != ENV_NOT_RUNNABLE) {
+		log("target env is not recving.");
+		return -E_IPC_NOT_RECV;
+	}
+	// if srcva < UTOP, srcva must be page aligned
+	// and check perm like above syscalls
+	if (srcva < (void*)UTOP) {
+		CHECK_ARG_VA_ALIGNED(srcva);
+		CHECK_ARG_PERM(perm);
+	}
+
+	e->env_ipc_perm = 0;
+	// check srcva is mapped
+	if (srcva < (void*)UTOP && e->env_ipc_dstva < (void*)UTOP) {
+		struct PageInfo *page;
+		page = page_lookup(cur->env_pgdir, srcva, &pte);
+		if (!page || !pte || !(*pte & (PTE_U | PTE_P))) {
+			log("srcva is not mapped, va: %p.", srcva);
+			return -E_INVAL;
+		}
+		// if srcva is read-only, perm must not be writable
+		if ((perm & PTE_W) && !(*pte & PTE_W)) {
+			log("srcva is read-only, but perm is writable, perm: 0x%x, pte: 0x%x.", perm, *pte);
+			return -E_INVAL;
+		}
+		if ((r = page_insert(e->env_pgdir, page, e->env_ipc_dstva, perm)) < 0) {
+			log("map page failed, srcva: %p, dstva: %p, perm: 0x%x", srcva, e->env_ipc_dstva, perm);
+			return r;
+		}
+		e->env_ipc_perm = perm;
+	}
+	e->env_ipc_from = cur->env_id;
+	e->env_ipc_value = value;
+	e->env_ipc_recving = 0;
+	e->env_status = ENV_RUNNABLE;
+	e->env_tf.tf_regs.reg_eax = 0;
+	return 0;
 }
 
 // Block until a value is ready.  Record that you want to receive
@@ -404,8 +454,16 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 static int
 sys_ipc_recv(void *dstva)
 {
-	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
+	struct Env *cur;
+	int r;
+	cur = curenv;
+	if (dstva < (void*)UTOP) {
+		CHECK_ARG_VA_ALIGNED(dstva);
+	}
+	cur->env_status = ENV_NOT_RUNNABLE;
+	cur->env_ipc_recving = 1;
+	cur->env_ipc_dstva = dstva;
+	sched_yield();
 	return 0;
 }
 
@@ -441,6 +499,10 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		return sys_page_unmap((envid_t)a1, (void*)a2);
 	case SYS_env_set_pgfault_upcall:
 		return sys_env_set_pgfault_upcall((envid_t)a1, (void*)a2);
+	case SYS_ipc_try_send:
+		return sys_ipc_try_send((envid_t)a1, a2, (void*)a3, a4);
+	case SYS_ipc_recv:
+		return sys_ipc_recv((void*)a1);
 	default:
 		return -E_INVAL;
 	}
