@@ -4,6 +4,7 @@
 #include <inc/memlayout.h>
 #include <inc/trap.h>
 
+#include <kern/picirq.h>
 
 
 ###################################################################
@@ -28,7 +29,7 @@
 	pushl $(num);							\
 	jmp _alltraps
 
-#define TH(name) TRAPHANDLER(name##_ENTRY, T_##name)
+#define TRAPHANDLER_INTERNAL(name) TRAPHANDLER(name##_ENTRY, T_##name)
 
 /* Use TRAPHANDLER_NOEC for traps where the CPU doesn't push an error code.
  * It pushes a 0 in place of the error code, so the trap frame has the same
@@ -43,7 +44,8 @@
 	pushl $(num);							\
 	jmp _alltraps
 
-#define TH_N(name) TRAPHANDLER_NOEC(name##_ENTRY, T_##name)
+#define TRAPHANDLER_INTERNAL_NOEC(name) TRAPHANDLER_NOEC(name##_ENTRY, T_##name)
+#define TRAPHANDLER_EXTERNAL_NOEC(name) TRAPHANDLER_NOEC(name##_ENTRY, IRQ_OFFSET+IRQ_##name)
 
 .text
 
@@ -51,47 +53,60 @@
 .type sysenter_handler @function;
 .align 2;
 sysenter_handler:
+	cli;
 	pushl %ebp;
 	pushl %esi;
-	pushl $0;
 	pushl %edi;
 	pushl %ebx;
 	pushl %ecx;
 	pushl %edx;
 	pushl %eax;
-	call syscall;
-	add $24, %esp;
+	call sysenter_wrapper;
+	add $20, %esp;
 	popl %edx;
 	popl %ecx;
+	sti;
 	sysexit;
+.global sysenter_handler_end;
+.type sysenter_handler_end @function;
+sysenter_handler_end:
+	nop;
 
 /*
  * Generate entry points for the different traps.
  * Which exceptions has error_code? reference: https://wiki.osdev.org/Exceptions
  */
-TH_N(DIVIDE)
-TH_N(DEBUG)
-TH_N(NMI)
-TH_N(BRKPT)
-TH_N(OFLOW)
-TH_N(BOUND)
-TH_N(ILLOP)
-TH_N(DEVICE)
-TH(DBLFLT)
+TRAPHANDLER_INTERNAL_NOEC(DIVIDE)
+TRAPHANDLER_INTERNAL_NOEC(DEBUG)
+TRAPHANDLER_INTERNAL_NOEC(NMI)
+TRAPHANDLER_INTERNAL_NOEC(BRKPT)
+TRAPHANDLER_INTERNAL_NOEC(OFLOW)
+TRAPHANDLER_INTERNAL_NOEC(BOUND)
+TRAPHANDLER_INTERNAL_NOEC(ILLOP)
+TRAPHANDLER_INTERNAL_NOEC(DEVICE)
+TRAPHANDLER_INTERNAL(DBLFLT)
 # 9 is reserve
-TH(TSS)
-TH(SEGNP)
-TH(STACK)
-TH(GPFLT)
-TH(PGFLT)
+TRAPHANDLER_INTERNAL(TSS)
+TRAPHANDLER_INTERNAL(SEGNP)
+TRAPHANDLER_INTERNAL(STACK)
+TRAPHANDLER_INTERNAL(GPFLT)
+TRAPHANDLER_INTERNAL(PGFLT)
 # 15 is reserved
-TH_N(FPERR)
-TH(ALIGN)
-TH_N(MCHK)
-TH_N(SIMDERR)
+TRAPHANDLER_INTERNAL_NOEC(FPERR)
+TRAPHANDLER_INTERNAL(ALIGN)
+TRAPHANDLER_INTERNAL_NOEC(MCHK)
+TRAPHANDLER_INTERNAL_NOEC(SIMDERR)
+
+# 16-47, external interrupts
+TRAPHANDLER_EXTERNAL_NOEC(TIMER)
+TRAPHANDLER_EXTERNAL_NOEC(KBD)
+TRAPHANDLER_EXTERNAL_NOEC(SERIAL)
+TRAPHANDLER_EXTERNAL_NOEC(SPURIOUS)
+TRAPHANDLER_EXTERNAL_NOEC(IDE)
+TRAPHANDLER_EXTERNAL_NOEC(ERROR)
 
 # 48
-TH_N(SYSCALL)
+TRAPHANDLER_INTERNAL_NOEC(SYSCALL)
 
 _alltraps:
     # Push values to make the stack look like a struct Trapframe
@@ -105,4 +120,3 @@ _alltraps:
 	# pass a pointer to the Trapframe as an argument to trap()
 	pushl %esp
 	call trap
-

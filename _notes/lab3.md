@@ -17,9 +17,10 @@ env初始化过程中重新加载了GDT，加入了用户态的code和data段，
 
 ---
 
-由于暂时没有文件系统，链接器会以`-b binary`选项，将用户程序作为binary放进kernel ELF的data段，然后在符号表里对于每个用户程序会有如下的信息：
+由于暂时没有文件系统，当链接Kernel的时候，链接器会通过`-b binary`选项把用户程序的ELF文件嵌入到data段。同时增加`_binary_obj_user_xxx_start`、`_binary_obj_user_xxx_size`和`_binary_obj_user_xxx_end`符号，用来指明ELF文件在加载后的地址界限。
 
 ```
+// nm kernel
 00008acc A _binary_obj_user_hello_size
 f011c330 D _binary_obj_user_hello_start
 f0124dfc D _binary_obj_user_buggyhello_start
@@ -121,15 +122,15 @@ Push(CS, EIP)
 ( Push(ErrorCode))
 
 // 设置CPL，EFLAGS
-    CPL ← new code-segment DPL
-    CS(RPL) ← CPL
-    // interrupt会关闭IF，IF会屏蔽硬件中断
-    IF IDT gate is interrupt gate
-        IF <- 0 (* Interrupt flag set to 0, interrupts disabled *)
-    TF ← 0;
-    VM ← 0;
-    RF ← 0;
-    NT ← 0;
+CPL <- new code-segment DPL
+CS(RPL) <- CPL
+// interrupt会关闭IF，IF会屏蔽硬件中断
+IF IDT gate is interrupt gate
+    IF <- 0 (* Interrupt flag set to 0, interrupts disabled *)
+TF <- 0;
+VM <- 0;
+RF <- 0;
+NT <- 0;
 ```
 
 ---
@@ -196,4 +197,3 @@ JOS中可以利用这两个指令来实现快速系统调用，所有需要的�
 ---
 
 gcc内联汇编中‘%=’输出一个数字，该数字对整个编译中的 asm 语句的每个实例都是唯一的。当创建本地标签并在生成多个汇编程序指令的单个模板中多次引用它们时，比如inline展开的内联汇编，此选项很有用。这种情况下，如果不给标签加`%=`做单独区分，会无法编译。
-

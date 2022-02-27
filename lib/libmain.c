@@ -5,17 +5,25 @@
 
 extern void umain(int argc, char **argv);
 
+#ifdef SFORK
+const volatile struct Env **env;
+#else
 const volatile struct Env *thisenv;
+#endif
 const char *binaryname = "<unknown>";
 
 void
 libmain(int argc, char **argv)
 {
 	// set thisenv to point at our Env structure in envs[].
-	// LAB 3: Your code here.
 	envid_t eid = sys_getenvid();
+#ifdef SFORK
+	const volatile struct Env *stack_env;
+	stack_env = &envs[ENVX(eid)];
+	env = &stack_env;
+#else
 	thisenv = &envs[ENVX(eid)];
-
+#endif
 	// save the name of the program so that panic() can use it
 	if (argc > 0)
 		binaryname = argv[0];
