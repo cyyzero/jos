@@ -82,8 +82,8 @@ case IRQ_OFFSET + IRQ_##name: \
 	return "(unknown trap)";
 }
 
-void
-sysenter_init(void)
+static void
+sysenter_init(uintptr_t stack)
 {
 	extern void sysenter_handler();
 	// set level 0 code segment
@@ -91,7 +91,7 @@ sysenter_init(void)
 	// set eip routine
 	wrmsr(IA32_SYSENTER_EIP, (uint32_t)sysenter_handler, 0);
 	// set esp
-	wrmsr(IA32_SYSENTER_ESP, KSTACKTOP, 0);
+	wrmsr(IA32_SYSENTER_ESP,  stack, 0);
 }
 
 void
@@ -144,8 +144,6 @@ trap_init(void)
 
 	// Per-CPU setup 
 	trap_init_percpu();
-	// setup fast syscall sysenter
-	sysenter_init();
 }
 
 // Initialize and load the per-CPU TSS and IDT
@@ -201,6 +199,8 @@ trap_init_percpu(void)
 
 	// Load the IDT
 	lidt(&idt_pd);
+	// setup fast syscall sysenter
+	sysenter_init(KSTACKTOP - cpu_id * (KSTKSIZE + KSTKGAP));
 }
 
 void
@@ -264,6 +264,8 @@ trap_dispatch(struct Trapframe *tf)
 	case T_SYSCALL:
 		tf->tf_regs.reg_eax = syscall(tf->tf_regs.reg_eax, tf->tf_regs.reg_edx, tf->tf_regs.reg_ecx, tf->tf_regs.reg_ebx, tf->tf_regs.reg_edi, tf->tf_regs.reg_esi);
 		return;
+	// Handle clock interrupts. Don't forget to acknowledge the
+	// interrupt using lapic_eoi() before calling the scheduler!
 	case IRQ_OFFSET + IRQ_TIMER:
 		lapic_eoi();
 		sched_yield();
@@ -277,10 +279,6 @@ trap_dispatch(struct Trapframe *tf)
 		print_trapframe(tf);
 		return;
 	}
-
-	// Handle clock interrupts. Don't forget to acknowledge the
-	// interrupt using lapic_eoi() before calling the scheduler!
-	// LAB 4: Your code here.
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -314,6 +312,15 @@ trap(struct Trapframe *tf)
 	assert(!(read_eflags() & FL_IF));
 
 	log("Incoming TRAP frame at %p, %s, eip: %p", tf, trapname(tf->tf_trapno), tf->tf_eip);
+
+	extern void sysenter_handler();
+	extern void sysenter_handler_end();
+	if (tf->tf_eip >= (uintptr_t)sysenter_handler && tf->tf_eip < (uintptr_t)sysenter_handler_end) {
+		if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+			env_run(curenv);
+			return;
+		}
+	}
 
 	if ((tf->tf_cs & 3) == 3) {
 		// Trapped from user mode.

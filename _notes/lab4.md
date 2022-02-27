@@ -72,3 +72,29 @@ libmain(int argc, char **argv)
 ```
 
 实现`sfork`时，全局变量共享，运行栈COW。所以`thisenv`替换成宏，访问栈上的数据，以保证每个进程的`thisenv`是独立的。
+
+---
+
+需要改进对sysenter的支持，如增加kernel全局锁、关闭开启中断等。由于sysenter和cli无法原子执行，有可能在sysenter和cli指令之间，发生时钟中断。这种情况下需要在trap中特殊处理：
+
+```c
+extern void sysenter_handler();
+extern void sysenter_handler_end();
+if (tf->tf_eip >= (uintptr_t)sysenter_handler && tf->tf_eip < (uintptr_t)sysenter_handler_end) {
+    if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+        env_run(curenv);
+        return;
+    }
+}
+```
+
+执行需要切换任务的系统调用，比如`sys_sched_yield`等，需要在`curenv->env_tf`中保存相关状态，这样才能在下次调度到它时正常恢复：
+
+```c
+#define STORE_TF \
+curenv->env_tf.tf_cs = GD_UT | 3; \
+curenv->env_tf.tf_eip = eip; \
+curenv->env_tf.tf_ss = GD_UD | 3; \
+curenv->env_tf.tf_esp = esp; \
+curenv->env_tf.tf_eflags = read_eflags() | FL_IF;
+```

@@ -53,19 +53,24 @@
 .type sysenter_handler @function;
 .align 2;
 sysenter_handler:
+	cli;
 	pushl %ebp;
 	pushl %esi;
-	pushl $0;
 	pushl %edi;
 	pushl %ebx;
 	pushl %ecx;
 	pushl %edx;
 	pushl %eax;
-	call syscall;
-	add $24, %esp;
+	call sysenter_wrapper;
+	add $20, %esp;
 	popl %edx;
 	popl %ecx;
+	sti;
 	sysexit;
+.global sysenter_handler_end;
+.type sysenter_handler_end @function;
+sysenter_handler_end:
+	nop;
 
 /*
  * Generate entry points for the different traps.

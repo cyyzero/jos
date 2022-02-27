@@ -12,6 +12,8 @@
 #include <kern/console.h>
 #include <kern/sched.h>
 
+#include <kern/spinlock.h>
+
 // Check page table entry perms
 // PTE_U | PTE_P must be set, PTE_AVAIL | PTE_W may or may not be set,
 // but no other bits may be set.  See PTE_SYSCALL in inc/mmu.h.
@@ -506,12 +508,67 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	default:
 		return -E_INVAL;
 	}
+}
 
-	panic("syscall not implemented");
-
-	switch (syscallno) {
+uint32_t
+sysenter_wrapper(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t eip, uint32_t esp)
+{
+#define STORE_TF \
+curenv->env_tf.tf_cs = GD_UT | 3; \
+curenv->env_tf.tf_eip = eip; \
+curenv->env_tf.tf_ss = GD_UD | 3; \
+curenv->env_tf.tf_esp = esp; \
+curenv->env_tf.tf_eflags = read_eflags() | FL_IF;
+	log("sysenter %s, eip: %p, esp: %p", syscallname(syscallno), eip, esp);
+	int r;
+	asm volatile("cld" ::: "cc");
+	lock_kernel();
+	assert(curenv);
+	switch(syscallno) {
+	case SYS_cputs:
+		sys_cputs((const char*)a1, (size_t)a2);
+		r = 0;
+		break;
+	case SYS_cgetc:
+		r = sys_cgetc();
+		break;
+	case SYS_getenvid:
+		r = sys_getenvid();
+		break;
+	case SYS_env_destroy:
+		r = sys_env_destroy((envid_t)a1);
+		break;
+	case SYS_exofork:
+		r = sys_exofork();
+		break;
+	case SYS_env_set_status:
+		r = sys_env_set_status((envid_t)a1, a2);
+		break;
+	case SYS_page_alloc:
+		r = sys_page_alloc((envid_t)a1, (void*)a2, a3);
+		break;
+	case SYS_page_unmap:
+		r = sys_page_unmap((envid_t)a1, (void*)a2);
+		break;
+	case SYS_env_set_pgfault_upcall:
+		r = sys_env_set_pgfault_upcall((envid_t)a1, (void*)a2);
+		break;
+	case SYS_ipc_try_send:
+		r = sys_ipc_try_send((envid_t)a1, a2, (void*)a3, a4);
+		break;
+	case SYS_yield:
+		STORE_TF;
+		sys_yield();
+		return 0;
+	case SYS_ipc_recv:
+		STORE_TF;
+		r = sys_ipc_recv((void*)a1);
+		break;
 	default:
-		return -E_INVAL;
+		r = -E_INVAL;
 	}
+
+	unlock_kernel();
+	return r;
 }
 
