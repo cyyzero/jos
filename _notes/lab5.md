@@ -21,14 +21,26 @@ x86保护模式利用两种机制为IO提供了权限控制：
 
 ```c
 if(PE == 1 && CPL > IOPL || VM == 1) { //Protected mode with CPL > IOPL or virtual-8086 mode
-	if(AnyPermissionBitSet(CurrentIOPort())) Exception(GP(0)); //If any I/O Permission Bit for I/O port being accessed == 1 the I/O operation is not allowed
-	else Destination = Source; //I/O operation is allowed; Reads from selected I/O port
+ if(AnyPermissionBitSet(CurrentIOPort())) Exception(GP(0)); //If any I/O Permission Bit for I/O port being accessed == 1 the I/O operation is not allowed
+ else Destination = Source; //I/O operation is allowed; Reads from selected I/O port
 }
 else Destination = Source; //Real Mode or Protected Mode with CPL <= IOPL; Reads from selected I/O port
 ```
 
 ---
 
-> Do you have to do anything else to ensure that this I/O privilege setting is saved and restored properly when you subsequently switch from one environment to another? Why? 
+> Do you have to do anything else to ensure that this I/O privilege setting is saved and restored properly when you subsequently switch from one environment to another? Why?
 
 不需要额外操作，从CPL = 0的环境iret时，允许EFLAG恢复IOPL。
+
+---
+
+```c
+ // Check that the block we read was allocated. (exercise for
+ // the reader: why do we do this *after* reading the block
+ // in?)
+ if (bitmap && block_is_free(blockno))
+  panic("reading free block %08x\n", blockno);
+```
+
+把block读进内存后，再判断这块block是否是被分配的。这是因为bitmap也是磁盘上，第一次访问bitmap的时候会触发内存缺页中断，然后把它读进内存后。如果先判断这块block是否是被分配的，那么会导致访问bitmap递归缺页中断。

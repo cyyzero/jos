@@ -577,7 +577,7 @@ env_run(struct Env *e)
 	}
 	curenv = e;
 	e->env_status = ENV_RUNNING;
-	e->env_runs = 0;
+	e->env_runs++;
 	lcr3(PADDR(e->env_pgdir));
 
 	// Step 2: Use env_pop_tf() to restore the environment's
