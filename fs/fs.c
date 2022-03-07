@@ -191,7 +191,7 @@ file_get_block(struct File *f, uint32_t filebno, char **blk)
 	int nblock, r;
 	uint32_t *ppdiskbno = 0;
 	
-	if ((r = file_block_walk(f, filebno, &ppdiskbno, 0) || ppdiskbno == 0) < 0) {
+	if ((r = file_block_walk(f, filebno, &ppdiskbno, 1) || ppdiskbno == 0) < 0) {
 		return r;
 	}
 	// if blockno entry is null, allocate a disk block
