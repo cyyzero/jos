@@ -44,3 +44,26 @@ else Destination = Source; //Real Mode or Protected Mode with CPL <= IOPL; Reads
 ```
 
 把block读进内存后，再判断这块block是否是被分配的。这是因为bitmap也是磁盘上，第一次访问bitmap的时候会触发内存缺页中断，然后把它读进内存后。如果先判断这块block是否是被分配的，那么会导致访问bitmap递归缺页中断。
+
+---
+
+```c
+#define MAXOPEN  1024
+#define FILEVA  0xD0000000
+
+void
+serve_init(void)
+{
+    int i;
+    uintptr_t va = FILEVA;
+    for (i = 0; i < MAXOPEN; i++) {
+        opentab[i].o_fileid = i;
+        opentab[i].o_fd = (struct Fd*) va;
+        va += PGSIZE;
+    }
+}
+```
+
+FS进程中，存放Fd数组的内存位于[0xd0000000, 0xd0400000)。在运行过程中，FS进程会分配Fd数组，然后通过IPC映射给用户进程。为了从客户端向服务器发送请求，使用 32 位数字作为请求类型，并将请求的参数存储在联合`Fsipc`中通过IPC共享的页面。在客户端，使用`fsipcbuf`共享页面；在服务器端，将传入请求页面映射到`fsreq`(0x0ffff000)。
+
+
