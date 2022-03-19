@@ -143,8 +143,8 @@ devfile_write(struct Fd *fd, const void *buf, size_t n)
 	// LAB 5: Your code here
 	int r;
 
-	if (n >= PGSIZE - (sizeof(int) + sizeof(size_t))) {
-		n = PGSIZE - (sizeof(int) + sizeof(size_t));
+	if (n >= sizeof(fsipcbuf.write.req_buf)) {
+		n = sizeof(fsipcbuf.write.req_buf);
 	}
 	fsipcbuf.write.req_fileid = fd->fd_file.id;
 	memmove(fsipcbuf.write.req_buf, buf, n);
