@@ -64,6 +64,30 @@ serve_init(void)
 }
 ```
 
-FS进程中，存放Fd数组的内存位于[0xd0000000, 0xd0400000)。在运行过程中，FS进程会分配Fd数组，然后通过IPC映射给用户进程。为了从客户端向服务器发送请求，使用 32 位数字作为请求类型，并将请求的参数存储在联合`Fsipc`中通过IPC共享的页面。在客户端，使用`fsipcbuf`共享页面；在服务器端，将传入请求页面映射到`fsreq`(0x0ffff000)。
+FS进程中，存放Fd数组的内存位于[0xd0000000, 0xd0400000)。在运行过程中，FS进程会分配Fd数组，然后通过IPC映射给用户进程。为了从客户端向服务器发送请求，使用 32 位数字作为请求类型，并将请求的参数存储在联合`Fsipc`中通过IPC共享的页面。在客户端，使用`fsipcbuf`共享页面；在服务器端，将传入请求页面映射到`fsreq`(0x0ffff000)。客户端共享FS传回Fd结构，共有32个，每个占一页，在[0xd0000000, 0xd0020000)。
 
+---
 
+fsipcbuf实际持有的是用户程序，FS只负责接收映射。
+
+```c
+// Virtual address at which to receive page mappings containing client requests.
+union Fsipc *fsreq = (union Fsipc *)0x0ffff000;
+```
+
+`write`时，数据流动方向为：
+
+```
+        user env                  |                  FS
+buf  ->  fsipcbuf.write.req_buf   =>   fsreq->write.req_buf  ->  disk
+```
+
+`read`时，数据流动方向为：
+
+```
+  user env      |          FS
+fsipcbuf.read   =>   fsreq->read
+
+                FS                |               user env
+disk  ->  fsreq->readRet.ret_buf  =>  fsipcbuf.readRet.ret_buf  ->   buf
+```
