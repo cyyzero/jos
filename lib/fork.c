@@ -29,7 +29,7 @@ pgfault(struct UTrapframe *utf)
 	pte_t pte = uvpt[addr >> PGSHIFT];
 	if (!((pde & (PTE_P | PTE_U | PTE_W)) &&
 		   pte & (PTE_P | PTE_U | PTE_COW))) {
-		panic("Not COW page, pde: 0x%x, pte: 0x%x.\n", pde, pte);
+		panic("Not COW page, pde: 0x%x, pte: 0x%x, eip: %p.\n", pde, pte, utf->utf_eip);
 	}
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
@@ -59,6 +59,20 @@ pgfault(struct UTrapframe *utf)
 	}
 }
 
+static int
+duppage(envid_t envid, unsigned pn, int perm)
+{
+	int r;
+	void* va = (void*)(pn << PGSHIFT);
+
+	r = sys_page_map(0, va, envid, va, perm);
+	if (r < 0) {
+		cprintf("sys_page_map from parent to child failed: %e.\n", r);
+		return r;
+	}
+	return 0;
+}
+
 //
 // Map our virtual page pn (address pn*PGSIZE) into the target envid
 // at the same virtual address.  If the page is writable or copy-on-write,
@@ -71,28 +85,29 @@ pgfault(struct UTrapframe *utf)
 // It is also OK to panic on error.
 //
 static int
-duppage(envid_t envid, unsigned pn, int is_cow)
+duppage_cow(envid_t envid, unsigned pn, int perm)
 {
+	int is_cow;
 	int r;
 	void* va = (void*)(pn << PGSHIFT);
-	int perm = PTE_U | PTE_P;
-	// if read-only, map to the same page
-	// if writable, map to a new page which is marked as PTE_COW
-	if (is_cow) {
+
+	perm &= ~PTE_W;
+	is_cow = perm & PTE_COW;
+	if (!is_cow) {
 		perm |= PTE_COW;
 	}
+
 	r = sys_page_map(0, va, envid, va, perm);
 	if (r < 0) {
 		cprintf("sys_page_map from parent to child failed: %e.\n", r);
 		return r;
 	}
 
-	if (is_cow) {
-		r = sys_page_map(0, va, 0, va, perm);
-		if (r < 0) {
-			cprintf("sys_page_map remap child failed: %e.\n", r);
-			return r;
-		}
+	// TODO: is it safe to check is_cow to avoid map?
+	r = sys_page_map(0, va, 0, va, perm);
+	if (r < 0) {
+		cprintf("sys_page_map remap child failed: %e.\n", r);
+		return r;
 	}
 	return 0;
 }
@@ -143,16 +158,24 @@ fork(void)
 				int pn = pdeno * NPDENTRIES + pteno;
 				pte_t pte = uvpt[pn];
 				if (pte & (PTE_P | PTE_U)) {
-					if (pte & PTE_W || pte & PTE_COW) {
+					if (pte & PTE_SHARE) {
+						// PTE_SHARE keep shared
+						if ((r = duppage(eid, pn, pte & PTE_SYSCALL)) < 0) {
+							return r;
+						}
+					} else if (pte & PTE_W || pte & PTE_COW) {
 						// user exception stack
 						if (pn == ((UXSTACKTOP - PGSIZE) >> PGSHIFT)) {
 							continue; 
 						}
-						if ((r = duppage(eid, pn, 1)) < 0) {
+						// remove PTE_W bit
+						int perm = (pte & PTE_SYSCALL) & ~PTE_W;
+						if ((r = duppage_cow(eid, pn, perm)) < 0) {
 							return r;
 						}
 					} else {
-						if ((r = duppage(eid, pn, 0)) < 0) {
+						assert((PTE_P | PTE_U) == (PTE_SYSCALL & pte));
+						if ((r = duppage(eid, pn, pte & PTE_SYSCALL)) < 0) {
 							return r;
 						}
 					}
@@ -218,12 +241,13 @@ sfork(void)
 						continue;
 					}
 					if (pn == ((USTACKTOP - PGSIZE) >> PGSHIFT)) {
-						duppage(eid, pn, 1);
+						cprintf("duppage_cow.\n");
+						if ((r = duppage_cow(eid, pn, pte & PTE_SYSCALL)) < 0) {
+							return r;
+						}
 						continue;
 					}
-					int perm = pte & PTE_SYSCALL;
-					void* va =  (void*)((pdeno << PDXSHIFT) | (pteno << PTXSHIFT));
-					if ((r = sys_page_map(0, va, eid, va, PTE_P | PTE_U | PTE_W)) < 0) {
+					if ((r = duppage(eid, pn, pte & PTE_SYSCALL)) < 0) {
 						return r;
 					}
 				}

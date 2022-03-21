@@ -302,6 +302,29 @@ static int
 copy_shared_pages(envid_t child)
 {
 	// LAB 5: Your code here.
+	int r;
+	extern volatile pte_t uvpt[];     // VA of "virtual page table"
+	extern volatile pde_t uvpd[];     // VA of current page directory
+
+	for (int pdeno = 0; pdeno <= PDX(UTOP-1); ++pdeno) {
+		// if present, iterate each pte
+		if (uvpd[pdeno] & (PTE_P | PTE_W | PTE_U)) {
+			int entry_num = NPTENTRIES;
+			if (pdeno == PDX(UTOP-1)) {
+				entry_num = PTX(UTOP-1)+1;
+			}
+			for (int pteno = 0; pteno < entry_num; ++pteno) {
+				pte_t pte = uvpt[pdeno * NPDENTRIES + pteno];
+				if ((pte & PTE_P) && (pte & PTE_U) && (pte & PTE_SHARE)) {
+					void* va = (void*)PGADDR(pdeno, pteno, 0);
+					if ((r = sys_page_map(0, va, child, va, pte & PTE_SYSCALL)) < 0) {
+						return r;
+					}
+				}
+			}
+		}
+	}
+
 	return 0;
 }
 
