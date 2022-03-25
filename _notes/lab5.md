@@ -91,3 +91,7 @@ fsipcbuf.read   =>   fsreq->read
                 FS                |               user env
 disk  ->  fsreq->readRet.ret_buf  =>  fsipcbuf.readRet.ret_buf  ->   buf
 ```
+
+---
+
+在 QEMU 中，在图形窗口中输入的输入显示为从键盘到JOS的输入，而输入到控制台的输入显示为串行端口上的字符。前者对应IRQ_KBD，后者对应IRQ_SERIAL。
