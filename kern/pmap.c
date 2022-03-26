@@ -564,11 +564,11 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	pte_t* pte = pgdir_walk(pgdir, va, 0);
-	if (pte_store) {
-		*pte_store = pte;
-	}
 	if (!pte || !(*pte & PTE_P)) {
 		return NULL;
+	}
+	if (pte_store) {
+		*pte_store = pte;
 	}
 	physaddr_t paddr = PTE_ADDR(*pte);
 	return pa2page(paddr);
@@ -592,7 +592,7 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 void
 page_remove(pde_t *pgdir, void *va)
 {
-	pte_t* pte;
+	pte_t* pte = NULL;
 	struct PageInfo *page;
 	page = page_lookup(pgdir, va, &pte);
 	assert((page && pte) || (!page && !pte));

@@ -95,3 +95,24 @@ disk  ->  fsreq->readRet.ret_buf  =>  fsipcbuf.readRet.ret_buf  ->   buf
 ---
 
 在 QEMU 中，在图形窗口中输入的输入显示为从键盘到JOS的输入，而输入到控制台的输入显示为串行端口上的字符。前者对应IRQ_KBD，后者对应IRQ_SERIAL。
+
+---
+
+文件系统位于磁盘1（区别于存放bootloader和kernel的磁盘0）。磁盘利用obj/fs/fs.img文件做模拟，构建的时候会使用fs/fsformat.c程序来格式化。一个Block和页大小一致，占8个sector。超级块位于block 1。
+
+![磁盘分布](https://pdos.csail.mit.edu/6.828/2018/labs/lab5/disk.png)
+
+---
+
+spawn流程：
+
+1. 创建一个env结构体
+2. 初始化子进程的栈。父进程在自己的UTEMP页分配页，并且设置好argc和argv，然后把这一页映射给子进程的栈地址。
+3. 解析ELF文件，把需要的segment都加载道子进程。也是通过UTEMP来间接读到内存并映射给子进程。
+4. 映射父子进程共享的页，具体为父进程标记为share bit的页映射到子进程。
+5. 设置子进程的寄存器。主要是设置EIP。
+6. 设置子进程状态为runnable。
+
+---
+
+pipe工作时，会给两个FD添加额外的data页，它们映射到同一个物理页。读写时通过这个共享的页来实现。
