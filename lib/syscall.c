@@ -193,3 +193,13 @@ sys_ipc_recv(void *dstva)
 #endif
 }
 
+int
+sys_exec(const char *pathname, const char *argv[])
+{
+#ifdef USE_SYSENTER
+	return sysenter(SYS_exec, 1, (uint32_t)pathname, (uint32_t)argv, 0, 0);
+#else
+	return syscall(SYS_exec, 1, (uint32_t)pathname, (uint32_t)argv, 0, 0, 0);
+#endif
+}
+

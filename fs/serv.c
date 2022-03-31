@@ -5,11 +5,17 @@
 
 #include <inc/x86.h>
 #include <inc/string.h>
+#include <inc/elf.h>
+#include <inc/trap.h>
 
 #include "fs.h"
 
 
 #define debug 0
+
+static int
+map_segment(envid_t envid, uintptr_t va, size_t memsz,
+	struct File *f, size_t filesz, off_t fileoffset, int perm);
 
 // The file system server maintains three structures
 // for each open file.
@@ -292,6 +298,83 @@ serve_sync(envid_t envid, union Fsipc *req)
 	return 0;
 }
 
+int
+serve_load(envid_t envid, union Fsipc *ipc)
+{
+	unsigned char elf_buf[512];
+	char path[MAXPATHLEN];
+	struct Trapframe tf;
+	const volatile struct Env *env;
+	struct Elf *elf;
+	struct Proghdr *ph;
+	struct File *f;
+	struct Fsreq_load *req = &ipc->load;
+	int perm;
+	ssize_t len;
+	int r;
+
+	if (debug)
+		cprintf("path is %p %s\n", req->req_path, req->req_path);
+	// Copy in the path, making sure it's null-terminated
+	memmove(path, req->req_path, MAXPATHLEN);
+	path[MAXPATHLEN-1] = 0;
+
+	// now we can unmap fsipcbuf
+	if ((r = sys_page_unmap(envid, UTEMP)) < 0) {
+		if (debug)
+			cprintf("unmap UTEMP failed, %e", r);
+	}
+	if ((r = file_open(path, &f)) < 0) {
+		if (debug)
+			cprintf("file_open failed: %e\n", r);
+		goto error;
+	}
+
+	elf = (struct Elf *)elf_buf;
+	if ((len = file_read(f, elf_buf, sizeof(elf_buf), 0)) != sizeof(elf_buf)
+		|| elf->e_magic != ELF_MAGIC) {
+		if (debug)
+			cprintf("elf magic %08x want %08x\n", elf->e_magic, ELF_MAGIC);
+		r = -E_NOT_EXEC;
+		goto error;
+	}
+	if (debug)
+		cprintf("magic: %x  entry: %x\n", elf->e_magic, elf->e_entry);
+
+	ph = (struct Proghdr*) (elf_buf + elf->e_phoff);
+
+	// FIXME: allow program header out of elf_buf
+	if (elf->e_ehsize + elf->e_phnum * elf->e_phentsize >= sizeof(elf_buf)) {
+		if (debug)
+			cprintf("elf program header is too large, entry size %d, num %d", elf->e_phentsize, elf->e_phnum);
+		r = -E_NOT_EXEC;
+		goto error;
+	}
+
+	// Set up program segments as defined in ELF header.
+	for (int i = 0; i < elf->e_phnum; i++, ph++) {
+		if (ph->p_type != ELF_PROG_LOAD)
+			continue;
+		perm = PTE_P | PTE_U;
+		cprintf("map %dth programs\n", i);
+		if (ph->p_flags & ELF_PROG_FLAG_WRITE)
+			perm |= PTE_W;
+		if ((r = map_segment(envid, ph->p_va, ph->p_memsz, f, ph->p_filesz, ph->p_offset, perm)) < 0) {
+			cprintf("%dth program map failed, %e\n", i, r);
+			goto error;
+		}
+	}
+	env = &envs[ENVX(envid)];
+	tf = env->env_tf;
+	tf.tf_eip = elf->e_entry;
+	sys_env_set_trapframe(envid, &tf);
+	sys_env_set_status(envid, ENV_RUNNABLE);
+	return 0;
+error:
+	sys_env_destroy(envid);
+	return r;
+}
+
 typedef int (*fshandler)(envid_t envid, union Fsipc *req);
 
 fshandler handlers[] = {
@@ -302,7 +385,8 @@ fshandler handlers[] = {
 	[FSREQ_FLUSH] =		(fshandler)serve_flush,
 	[FSREQ_WRITE] =		(fshandler)serve_write,
 	[FSREQ_SET_SIZE] =	(fshandler)serve_set_size,
-	[FSREQ_SYNC] =		serve_sync
+	[FSREQ_SYNC] =		serve_sync,
+	[FSREQ_LOAD] =		serve_load,
 };
 
 void
@@ -314,6 +398,7 @@ serve(void)
 
 	while (1) {
 		perm = 0;
+		cprintf("recving...\n");
 		req = ipc_recv((int32_t *) &whom, fsreq, &perm);
 		if (debug)
 			cprintf("fs req %d from %08x [page %08x: %s]\n",
@@ -335,7 +420,10 @@ serve(void)
 			cprintf("Invalid request code %d from %08x\n", req, whom);
 			r = -E_INVAL;
 		}
-		ipc_send(whom, r, pg, perm);
+		// do not need to send back
+		if (req != FSREQ_LOAD) {
+			ipc_send(whom, r, pg, perm);
+		}
 		sys_page_unmap(0, fsreq);
 	}
 }
@@ -353,7 +441,48 @@ umain(int argc, char **argv)
 
 	serve_init();
 	fs_init();
-        fs_test();
+	fs_test();
 	serve();
 }
 
+
+static int
+map_segment(envid_t envid, uintptr_t va, size_t memsz,
+	struct File *f, size_t filesz, off_t fileoffset, int perm)
+{
+	int i, r;
+	void *blk;
+
+	//cprintf("map_segment %x+%x\n", va, memsz);
+
+	if ((i = PGOFF(va))) {
+		va -= i;
+		memsz += i;
+		filesz += i;
+		fileoffset -= i;
+	}
+
+	for (i = 0; i < memsz; i += PGSIZE) {
+		if (i >= filesz) {
+			// allocate a blank page
+			if ((r = sys_page_alloc(envid, (void*) (va + i), perm)) < 0) {
+				cprintf("sys_page_alloc failed, %e\n", r);
+				return r;
+			}
+		} else {
+			// from file
+			if ((r = sys_page_alloc(0, UTEMP, PTE_P|PTE_U|PTE_W)) < 0) {
+				cprintf("sys_page_alloc failed, %e\n", r);
+				return r;
+			}
+			if ((r = file_read(f, UTEMP, MIN(PGSIZE, filesz-i), fileoffset + i)) < 0) {
+				cprintf("file read failed, %e\n", r);
+				return r;
+			}
+			if ((r = sys_page_map(0, UTEMP, envid, (void*) (va + i), perm)) < 0)
+				panic("exec: sys_page_map data: %e", r);
+			sys_page_unmap(0, UTEMP);
+		}
+	}
+	return 0;
+}

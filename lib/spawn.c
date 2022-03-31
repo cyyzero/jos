@@ -10,7 +10,25 @@ static int init_stack(envid_t child, const char **argv, uintptr_t *init_esp);
 static int map_segment(envid_t child, uintptr_t va, size_t memsz,
 		       int fd, size_t filesz, off_t fileoffset, int perm);
 static int copy_shared_pages(envid_t child);
-
+// #define USE_EXEC
+#ifdef USE_EXEC
+int
+spawn(const char *prog, const char **argv)
+{
+	int child;
+	if ((child = fork()) < 0) {
+		return child;
+	}
+	// child
+	if (child == 0) {
+		cprintf("child exec\n");
+		execv(prog, argv);
+	}
+	// child
+	cprintf("parent return\n");
+	return child;
+}
+#else
 // Spawn a child process from a program image loaded from the file system.
 // prog: the pathname of the program to run.
 // argv: pointer to null-terminated array of pointers to strings,
@@ -143,6 +161,8 @@ error:
 	close(fd);
 	return r;
 }
+
+#endif
 
 // Spawn, taking command-line arguments array directly on the stack.
 // NOTE: Must have a sentinal of NULL at the end of the args

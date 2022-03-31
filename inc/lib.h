@@ -62,6 +62,7 @@ int	sys_page_map(envid_t src_env, void *src_pg,
 int	sys_page_unmap(envid_t env, void *pg);
 int	sys_ipc_try_send(envid_t to_env, uint32_t value, void *pg, int perm);
 int	sys_ipc_recv(void *rcv_pg);
+int	sys_exec(const char *pathname, const char *argv[]);
 
 // This must be inlined.  Exercise for reader: why?
 static inline envid_t __attribute__((always_inline))
@@ -108,6 +109,10 @@ int	pageref(void *addr);
 // spawn.c
 envid_t	spawn(const char *program, const char **argv);
 envid_t	spawnl(const char *program, const char *arg0, ...);
+
+// exec.c
+int	execv(const char *program, const char **argv);
+int	execl(const char *program, const char *arg0, ...);
 
 // console.c
 void	cputchar(int c);

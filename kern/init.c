@@ -62,6 +62,8 @@ i386_init(void)
 	// Should not be necessary - drains keyboard because interrupt has given up.
 	kbd_intr();
 
+	// wait for FS finish initializing and start receiving
+	envs[1].env_status = ENV_BEFORE_FS;
 	// Schedule and run the first user environment!
 	sched_yield();
 }

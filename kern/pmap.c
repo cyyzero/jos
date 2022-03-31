@@ -529,7 +529,7 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
-	log("va %x, pp 0x%x", va, page2pa(pp));
+	log("va %x, pp 0x%x, perm %x", va, page2pa(pp), perm);
 	assert((uintptr_t)va % PGSIZE == 0);
 	pte_t* pte;
 	uintptr_t paddr;

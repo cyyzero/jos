@@ -20,4 +20,9 @@ enum {
 	NSYSCALLS
 };
 
+// avoid conflict with syscall_no in lab 6
+enum {
+	SYS_exec = 66,
+};
+
 #endif /* !JOS_INC_SYSCALL_H */

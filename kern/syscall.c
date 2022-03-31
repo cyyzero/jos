@@ -4,6 +4,7 @@
 #include <inc/error.h>
 #include <inc/string.h>
 #include <inc/assert.h>
+#include <inc/fs.h>
 
 #include <kern/env.h>
 #include <kern/pmap.h>
@@ -13,6 +14,9 @@
 #include <kern/sched.h>
 
 #include <kern/spinlock.h>
+
+#define debug 0
+#define FSIPCBUF2USTACK(addr)	((void*) (addr)  - (void*)fsipcbuf + (USTACKTOP - PGSIZE))
 
 // Check page table entry perms
 // PTE_U | PTE_P must be set, PTE_AVAIL | PTE_W may or may not be set,
@@ -50,6 +54,18 @@ envid2pgdir(envid_t envid)
 	struct Env *e;
 	int err;
 	if ((err = envid2env(envid, &e, 1)) < 0) {
+		log("bad envid: 0x%x", envid);
+		return NULL;
+	}
+	return e->env_pgdir;
+}
+
+static pde_t*
+envid2pgdirWithCheck(envid_t envid, bool perm)
+{
+	struct Env *e;
+	int err;
+	if ((err = envid2env(envid, &e, perm)) < 0) {
 		log("bad envid: 0x%x", envid);
 		return NULL;
 	}
@@ -122,8 +138,12 @@ sys_env_destroy(envid_t envid)
 {
 	int r;
 	struct Env *e;
+	int check = 1;
 
-	if ((r = envid2env(envid, &e, 1)) < 0)
+	if (curenv->env_type ==ENV_TYPE_FS)
+		check = 0;
+
+	if ((r = envid2env(envid, &e, check)) < 0)
 		return r;
 	env_destroy(e);
 	return 0;
@@ -175,10 +195,14 @@ sys_env_set_status(envid_t envid, int status)
 	// You should set envid2env's third argument to 1, which will
 	// check whether the current environment has permission to set
 	// envid's status.
-	struct Env *e;
+	struct Env *e, *cur;
 	int r;
-
-	if ((r = envid2env(envid, &e, 1)) < 0) {
+	int check = 1;
+	cur = curenv;
+	if (cur->env_type == ENV_TYPE_FS && cur->env_id != envid) {
+		check = 0;
+	}
+	if ((r = envid2env(envid, &e, check)) < 0) {
 		log("bad envid, 0x%x", envid);
 		return r;
 	}
@@ -187,6 +211,7 @@ sys_env_set_status(envid_t envid, int status)
 		return -E_INVAL;
 	}
 	e->env_status = status;
+	Debug("eip is %p", e->env_tf.tf_eip);
 	return 0;
 }
 
@@ -205,7 +230,11 @@ sys_env_set_trapframe(envid_t envid, struct Trapframe *tf)
 	// address!
 	int r;
 	struct Env *env;
-	if ((r = envid2env(envid, &env, 1)) < 0) {
+	int check = 1;
+	if (curenv->env_type == ENV_TYPE_FS) {
+		check = 0;
+	}
+	if ((r = envid2env(envid, &env, check)) < 0) {
 		return r;
 	}
 	if ((uintptr_t)tf >= UTOP) {
@@ -273,20 +302,28 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	//   If page_insert() fails, remember to free the page you
 	//   allocated!
 
-	struct Env *e;
+	struct Env *e, *cur;
 	struct PageInfo *page;
 	pde_t* pgdir;
 	int err;
+	int check = 1;
+	// Debug("env 0x%x asked to alloc page for env 0x%x at va %p", curenv->env_id, envid, va);
 	// check va
 	CHECK_ARG_VA(va);
 
 	// check perm
 	CHECK_ARG_PERM(perm);
 
-	pgdir = envid2pgdir(envid);
+	cur = curenv;
+	// allow FS to allocate pages
+	if (cur->env_type == ENV_TYPE_FS && envid != cur->env_id) {
+		check = 0;
+	}
+	pgdir = envid2pgdirWithCheck(envid, check);
 	if (!pgdir) {
 		return -E_BAD_ENV;
 	}
+
 	page = page_alloc(ALLOC_ZERO);
 	if (!page) {
 		log("No availble page.");
@@ -294,7 +331,7 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	}
 	if ((err = page_insert(pgdir, page, va, perm)) < 0) {
 		page_free(page);
-		log("No aviable page allocated for pte table");
+		Debug("No aviable page allocated for pte table");
 		return err;
 	}
 	return 0;
@@ -329,17 +366,28 @@ sys_page_map(envid_t srcenvid, void *srcva,
 
 	pde_t *srcpgdir, *dstpgdir;
 	pte_t *srcpte, *dstpte;
+	struct Env *env;
 	struct PageInfo *srcpage;
+	int r;
+	bool checkDstEnv = 1;
+
 	// check srcva and dstva
 	CHECK_ARG_VA(srcva);
 	CHECK_ARG_VA(dstva);
 	// check perm
 	CHECK_ARG_PERM(perm);
 
-	if ((srcpgdir = envid2pgdir(srcenvid)) == NULL) {
-		return -E_BAD_ENV;
+	if ((r = envid2env(srcenvid, &env, 1)) < 0) {
+		log("Envid invalid, eid: 0x%x, err: %e", srcenvid, r);
+		return r;
 	}
-	if ((dstpgdir = envid2pgdir(dstenvid)) == NULL) {
+	srcpgdir = env->env_pgdir;
+	// allow FS map pages to any env
+	if (env->env_type == ENV_TYPE_FS) {
+		checkDstEnv = 0;
+	}
+
+	if ((dstpgdir = envid2pgdirWithCheck(dstenvid, checkDstEnv)) == NULL) {
 		return -E_BAD_ENV;
 	}
 	srcpage = page_lookup(srcpgdir,srcva, &srcpte);
@@ -370,9 +418,13 @@ sys_page_unmap(envid_t envid, void *va)
 {
 	// Hint: This function is a wrapper around page_remove().
 	pde_t *pgdir;
+	int check = 1;
 	
+	if (curenv->env_type == ENV_TYPE_FS) {
+		check = 0;
+	}
 	CHECK_ARG_VA(va);
-	pgdir = envid2pgdir(envid);
+	pgdir = envid2pgdirWithCheck(envid, check);
 	if (!pgdir) {
 		log("env %0x has no pgdir.", envid);
 		return -E_BAD_ENV;
@@ -428,7 +480,7 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 	int r;
 
 	if ((r = envid2env(envid, &e, 0)) < 0) {
-		log("bad envid: %d, %e", envid, r);
+		Debug("bad envid: %x, %e", envid, r);
 		return r;
 	}
 	cur = curenv;
@@ -485,6 +537,13 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 static int
 sys_ipc_recv(void *dstva)
 {
+	static int visited;
+	if (!visited) {
+		// enable other user program running
+		if (envs[1].env_status == ENV_BEFORE_FS)
+			envs[1].env_status = ENV_RUNNABLE;
+		visited = 1;
+	}
 	struct Env *cur;
 	int r;
 	cur = curenv;
@@ -498,11 +557,247 @@ sys_ipc_recv(void *dstva)
 	return 0;
 }
 
+// Receive a value via IPC and return it.
+// If 'pg' is nonnull, then any page sent by the sender will be mapped at
+//	that address.
+// If 'from_env_store' is nonnull, then store the IPC sender's envid in
+//	*from_env_store.
+// If 'perm_store' is nonnull, then store the IPC sender's page permission
+//	in *perm_store (this is nonzero iff a page was successfully
+//	transferred to 'pg').
+// If the system call fails, then store 0 in *fromenv and *perm (if
+//	they're nonnull) and return the error.
+// Otherwise, return the value sent by the sender
+//
+// Hint:
+//   Use 'thisenv' to discover the value and who sent it.
+//   If 'pg' is null, pass sys_ipc_recv a value that it will understand
+//   as meaning "no page".  (Zero is not the right value, since that's
+//   a perfectly valid place to map a page.)
+static int32_t
+ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
+{
+	int r;
+	struct Env *thisenv = curenv;
+	if (pg == NULL) {
+		pg = (void*)UTOP;
+	}
+	r = sys_ipc_recv(pg);
+	if (r < 0) {
+		cprintf("sys_ipc_recv failed, %e\n", r);
+		*from_env_store = 0;
+		*perm_store = 0;
+		return r;
+	}
+	if (from_env_store) {
+		*from_env_store = thisenv->env_ipc_from;
+	}
+	if (perm_store) {
+		*perm_store = thisenv->env_ipc_perm;
+	}
+	return thisenv->env_ipc_value;
+}
+
+// Send 'val' (and 'pg' with 'perm', if 'pg' is nonnull) to 'toenv'.
+// This function keeps trying until it succeeds.
+// It should panic() on any error other than -E_IPC_NOT_RECV.
+//
+// Hint:
+//   If 'pg' is null, pass sys_ipc_try_send a value that it will understand
+//   as meaning "no page".  (Zero is not the right value.)
+static int
+ipc_send(envid_t to_env, uint32_t val, void *pg, int perm)
+{
+	int r;
+	if (pg == NULL) {
+		pg = (void*)UTOP;
+	}
+	if (debug)
+		Debug("send pg: %p, perm: %x\n", pg, perm);
+	while (true) {
+		r = sys_ipc_try_send(to_env, val, pg, perm);
+		if (r == 0) {
+			break;
+		} else if (r == -E_IPC_NOT_RECV) {
+			Debug("Fs is not recving.");
+			curenv->env_tf.tf_eip -= 2;
+			sys_page_unmap(0, UTEMP);
+			sys_yield();
+		} else {
+			log("send failed, eid: 0x%x, pg: %d, perm: 0x%x, err: %e \n", to_env, pg, perm, r);
+			return -E_FAULT;
+		}
+	}
+	return 0;
+}
+
+// Find the first environment of the given type.  We'll use this to
+// find special environments.
+// Returns 0 if no such environment exists.
+static envid_t
+ipc_find_env(enum EnvType type)
+{
+	int i;
+	for (i = 0; i < NENV; i++)
+		if (envs[i].env_type == type)
+			return envs[i].env_id;
+	return 0;
+}
+
+static int
+fsipc(unsigned type, void *fsipcbuf)
+{
+	static envid_t fsenv;
+	if (fsenv == 0)
+		fsenv = ipc_find_env(ENV_TYPE_FS);
+
+	int r;
+
+	// assert(sizeof(fsipcbuf) == PGSIZE);
+	if (debug)
+		Debug("fsipcbuf: %p\n", fsipcbuf);
+	r = ipc_send(fsenv, type, fsipcbuf, PTE_P | PTE_W | PTE_U);
+	if (r < 0) {
+		if (debug)
+			Debug("ipc send failed, %e", r);
+	}
+	return 0;
+}
+
+// Set up the initial stack page for the new child process with envid 'child'
+// using the arguments array pointed to by 'argv',
+// which is a null-terminated array of pointers to null-terminated strings.
+//
+// On success, returns 0 and sets *init_esp
+// to the initial stack pointer with which the child should start.
+// Returns < 0 on failure.
+static int
+init_stack_and_free_user_vm(struct Env *e, const char **argv, void *fsipcbuf)
+{
+	cprintf("enter init stack\n");
+	size_t string_size;
+	int argc, i, r;
+	char *string_store;
+	uintptr_t *argv_store;
+
+	// Count the number of arguments (argc)
+	// and the total amount of space needed for strings (string_size).
+	string_size = 0;
+	for (argc = 0; argv[argc] != 0; argc++)
+		string_size += strlen(argv[argc]) + 1;
+	Debug("argc is %d, string size is %d\n", argc, string_size);
+	// Determine where to place the strings and the argv array.
+	// Set up pointers into fsipcbuf; we'll map a page
+	// there later, then remap that page into the child environment
+	// at (USTACKTOP - PGSIZE).
+	// strings is the topmost thing on the stack.
+	string_store = fsipcbuf + PGSIZE - string_size;
+	// argv is below that.  There's one argument pointer per argument, plus
+	// a null pointer.
+	argv_store = (uintptr_t*) (ROUNDDOWN(string_store, 4) - 4 * (argc + 1));
+
+	Debug("string_store: %p argv_store %p\n", string_store, argv_store);
+
+	// Make sure that argv, strings, and the 2 words that hold 'argc'
+	// and 'argv' themselves will all fit in a single stack page.
+	if ((void*) (argv_store - 2) < fsipcbuf)
+		return -E_NO_MEM;
+
+
+	//	* Initialize 'argv_store[i]' to point to argument string i,
+	//	  for all 0 <= i < argc.
+	//	  Also, copy the argument strings from 'argv' into the
+	//	  newly-allocated stack page.
+	//
+	//	* Set 'argv_store[argc]' to 0 to null-terminate the args array.
+	//
+	//	* Push two more words onto the child's stack below 'args',
+	//	  containing the argc and argv parameters to be passed
+	//	  to the child's umain() function.
+	//	  argv should be below argc on the stack.
+	//	  (Again, argv should use an address valid in the child's
+	//	  environment.)
+	//
+	//	* Set *init_esp to the initial stack pointer for the child,
+	//	  (Again, use an address valid in the child's environment.)
+	for (i = 0; i < argc; i++) {
+		argv_store[i] = FSIPCBUF2USTACK(string_store);
+		strcpy(string_store, argv[i]);
+		Debug("%dth argv %s", i, string_store);
+		string_store += strlen(argv[i]) + 1;
+	}
+	argv_store[argc] = 0;
+	Debug("string_store %p", string_store);
+	assert(string_store == fsipcbuf + PGSIZE);
+
+	argv_store[-1] = FSIPCBUF2USTACK(argv_store);
+	argv_store[-2] = argc;
+
+	e->env_tf.tf_esp = FSIPCBUF2USTACK(&argv_store[-2]);
+	Debug("env esp is %p", e->env_tf.tf_esp);
+
+	// free all previous user vm
+	// env_free_user_vm(e);
+	// After completing the stack, map it into the child's address space
+	// and unmap it from ours!
+	if ((r = sys_page_alloc(0, (void*) (USTACKTOP - PGSIZE), PTE_P | PTE_U | PTE_W)) < 0) {
+		return r;
+	}
+	memmove((void*) (USTACKTOP - PGSIZE), fsipcbuf, PGSIZE);
+	memset(fsipcbuf, 0, PGSIZE);
+	return 0;
+}
+
+// exec an ELF, replace the .text and data segments
+static int
+sys_exec(const char* pathname, const char*argv[])
+{
+	int r, len;
+	struct Env *e;
+	union Fsipc *fsipcbuf;
+	if ((r = sys_page_alloc(0, UTEMP, PTE_P | PTE_U | PTE_W)) < 0) {
+		goto error;
+	}
+	
+	if (debug)
+		Debug("sys_pag_alloc %e", r);
+	char pathbuf[MAXPATHLEN];
+	fsipcbuf = (union Fsipc *)UTEMP;
+
+	e = curenv;
+	e->env_status = ENV_NOT_RUNNABLE;
+
+	// copy pathname
+	strncpy(pathbuf, pathname, MAXPATHLEN);
+	pathbuf[MAXPATHLEN-1] = 0;
+	// init stack
+	if ((r = init_stack_and_free_user_vm(e, argv, (void*)fsipcbuf)) < 0) {
+		Debug("init stack failed, %e\n", r);
+		goto error;
+	}
+	if (debug)
+		Debug("Finish stack init\n");
+	// copy pathname to fsipcbuf
+	strncpy(fsipcbuf->load.req_path, pathbuf, MAXPATHLEN);
+	Debug("fsipcbuf.load.req_path: %p %s %s\n", &fsipcbuf->load.req_path, fsipcbuf->load.req_path, (void*)fsipcbuf);
+	// load elf
+	if ((r = fsipc(FSREQ_LOAD, fsipcbuf)) < 0) {
+		Debug("FS ipc load failed", r);
+		goto error;
+	}
+	if (debug)
+		Debug("finish exec, env status %d", e->env_status);
+	return 0;
+error:
+	sys_page_unmap(0, UTEMP);
+	return r;
+}
+
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
 {
-	log("syscall %s", syscallname(syscallno));
+	// log("syscall %s", syscallname(syscallno));
 	// Call the function corresponding to the 'syscallno' parameter.
 	// Return any appropriate return value.
 	switch (syscallno) {
@@ -536,6 +831,8 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		return sys_ipc_recv((void*)a1);
 	case SYS_env_set_trapframe:
 		return sys_env_set_trapframe((envid_t)a1, (struct Trapframe*)a2);
+	case SYS_exec:
+		return sys_exec((const char*)a1, (const char**)a2);
 	default:
 		return -E_INVAL;
 	}
@@ -595,6 +892,13 @@ curenv->env_tf.tf_eflags = read_eflags() | FL_IF;
 		STORE_TF;
 		r = sys_ipc_recv((void*)a1);
 		break;
+	case SYS_env_set_trapframe:
+		STORE_TF;
+		r = sys_env_set_trapframe((envid_t)a1, (struct Trapframe *)a2);
+		break;
+	case SYS_exec:
+		STORE_TF;
+		r = sys_exec((const char*)a1, (const char**)a2);
 	default:
 		r = -E_INVAL;
 	}
