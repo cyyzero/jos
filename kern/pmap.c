@@ -92,6 +92,8 @@ static void sort_free_page_list(void);
 // If we're out of memory, boot_alloc should panic.
 // This function may ONLY be used during initialization,
 // before the page_free_list list has been set up.
+// Note that when this function is called, we are still using entry_pgdir,
+// which only maps the first 4MB of physical memory.
 static void *
 boot_alloc(uint32_t n)
 {
@@ -527,7 +529,7 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
-	log("va %x, pp 0x%x", va, page2pa(pp));
+	log("va %x, pp 0x%x, perm %x", va, page2pa(pp), perm);
 	assert((uintptr_t)va % PGSIZE == 0);
 	pte_t* pte;
 	uintptr_t paddr;
@@ -562,11 +564,11 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	pte_t* pte = pgdir_walk(pgdir, va, 0);
-	if (pte_store) {
-		*pte_store = pte;
-	}
 	if (!pte || !(*pte & PTE_P)) {
 		return NULL;
+	}
+	if (pte_store) {
+		*pte_store = pte;
 	}
 	physaddr_t paddr = PTE_ADDR(*pte);
 	return pa2page(paddr);
@@ -590,7 +592,7 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 void
 page_remove(pde_t *pgdir, void *va)
 {
-	pte_t* pte;
+	pte_t* pte = NULL;
 	struct PageInfo *page;
 	page = page_lookup(pgdir, va, &pte);
 	assert((page && pte) || (!page && !pte));

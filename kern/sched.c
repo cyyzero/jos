@@ -21,7 +21,8 @@ sched_yield(void)
 	//
 	// If no envs are runnable, but the environment previously
 	// running on this CPU is still ENV_RUNNING, it's okay to
-	// choose that environment.
+	// choose that environment. Make sure curenv is not null before
+	// dereferencing it.
 	//
 	// Never choose an environment that's currently running on
 	// another CPU (env_status == ENV_RUNNING). If there are
@@ -57,7 +58,7 @@ sched_yield(void)
 
 found:
 	assert(!(idle->env_status == ENV_RUNNING && idle->env_cpunum != thiscpu->cpu_id));
-	log("cpuid: %d, switch to runnable env, id: 0x%x", thiscpu->cpu_id, idle->env_id);
+	// log("cpuid: %d, switch to runnable env, id: 0x%x", thiscpu->cpu_id, idle->env_id);
 	env_run(idle);
 }
 

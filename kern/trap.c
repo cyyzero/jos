@@ -269,6 +269,14 @@ trap_dispatch(struct Trapframe *tf)
 	case IRQ_OFFSET + IRQ_TIMER:
 		lapic_eoi();
 		sched_yield();
+		return;
+	// Handle keyboard and serial interrupts.
+	case IRQ_OFFSET + IRQ_KBD:
+		kbd_intr();
+		return;
+	case IRQ_OFFSET + IRQ_SERIAL:
+		serial_intr();
+		return;
 	}
 
 	// Handle spurious interrupts
@@ -311,7 +319,7 @@ trap(struct Trapframe *tf)
 	// the interrupt path.
 	assert(!(read_eflags() & FL_IF));
 
-	log("Incoming TRAP frame at %p, %s, eip: %p", tf, trapname(tf->tf_trapno), tf->tf_eip);
+	// log("Incoming TRAP frame at %p, %s, eip: %p", tf, trapname(tf->tf_trapno), tf->tf_eip);
 
 	extern void sysenter_handler();
 	extern void sysenter_handler_end();
@@ -371,7 +379,7 @@ page_fault_handler(struct Trapframe *tf)
 
 	// Handle kernel-mode page faults.
 	if ((tf->tf_cs & 0x3) == 0) {
-		panic("kernel memory access error, va 0x%08x ip %08x", fault_va, tf->tf_eip);
+		panic("kernel memory access error, va 0x%08x ip %08x err %08x", fault_va, tf->tf_eip, tf->tf_err);
 	}
 
 	// We've already handled kernel-mode exceptions, so if we get here,

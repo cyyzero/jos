@@ -10,7 +10,7 @@ $(OBJDIR)/kern/kernel.img: $(OBJDIR)/kern/kernel $(OBJDIR)/boot/boot
 	$(V)mv $(OBJDIR)/kern/kernel.img~ $(OBJDIR)/kern/kernel.img
 ```
 
-在磁盘中，打开一个section是bootloader，第二个section开始是kernel。
+在磁盘中，打开一个sector是bootloader，第二个sector开始是kernel。
 
 在内存中，bootloader起始于0x7c00,512Byte，bootloader的栈顶也放在0x7c00。内核的elf header先被bootloader读到0x10000，然后会接着将一些必要的segment读到对应的内存处（起始于0x100000）。Kernel的栈顶在它的data段。
 

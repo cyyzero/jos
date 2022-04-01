@@ -31,6 +31,8 @@ int	vfprintf(int fd, const char *fmt, va_list);
 char*	readline(const char *prompt);
 
 void _log(const char *file, const char *func, int line, const char *fmt,...);
-#define log(...) _log(__FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+// #define log(...) _log(__FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define Debug(...) _log(__FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define log(...)
 
 #endif /* !JOS_INC_STDIO_H */

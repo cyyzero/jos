@@ -158,6 +158,12 @@ sys_env_set_status(envid_t envid, int status)
 }
 
 int
+sys_env_set_trapframe(envid_t envid, struct Trapframe *tf)
+{
+	return syscall(SYS_env_set_trapframe, 1, envid, (uint32_t) tf, 0, 0, 0);
+}
+
+int
 sys_env_set_pgfault_upcall(envid_t envid, void *upcall)
 {
 #ifdef USE_SYSENTER
@@ -184,6 +190,16 @@ sys_ipc_recv(void *dstva)
 	return sysenter(SYS_ipc_recv, 1, (uint32_t)dstva, 0, 0, 0);
 #else
 	return syscall(SYS_ipc_recv, 1, (uint32_t)dstva, 0, 0, 0, 0);
+#endif
+}
+
+int
+sys_exec(const char *pathname, const char *argv[])
+{
+#ifdef USE_SYSENTER
+	return sysenter(SYS_exec, 1, (uint32_t)pathname, (uint32_t)argv, 0, 0);
+#else
+	return syscall(SYS_exec, 1, (uint32_t)pathname, (uint32_t)argv, 0, 0, 0);
 #endif
 }
 

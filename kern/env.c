@@ -275,7 +275,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	env_free_list = e->env_link;
 	*newenv_store = e;
 
-	cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
+	// cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
 	return 0;
 }
 
@@ -442,6 +442,15 @@ env_create(uint8_t *binary, enum EnvType type)
 		log("env_alloc failed: %e", err);
 	}
 	load_icode(e, binary);
+	switch (type) {
+	case ENV_TYPE_FS:
+		// ensure IOPL == CPL at user mode
+		e->env_tf.tf_eflags |= FL_IOPL_3;
+		e->env_type = type;
+		break;
+	default:
+		break;
+	}
 }
 
 //
@@ -461,7 +470,7 @@ env_free(struct Env *e)
 		lcr3(PADDR(kern_pgdir));
 
 	// Note the environment's demise.
-	cprintf("[%08x] free env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
+	// cprintf("[%08x] free env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
 
 	// Flush all mapped pages in the user portion of the address space
 	static_assert(UTOP % PTSIZE == 0);
@@ -569,7 +578,7 @@ env_run(struct Env *e)
 	}
 	curenv = e;
 	e->env_status = ENV_RUNNING;
-	e->env_runs = 0;
+	e->env_runs++;
 	lcr3(PADDR(e->env_pgdir));
 
 	// Step 2: Use env_pop_tf() to restore the environment's
