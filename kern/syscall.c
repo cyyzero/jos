@@ -796,9 +796,10 @@ sys_exec(const char* pathname, const char*argv[])
 	e = curenv;
 	e->env_status = ENV_NOT_RUNNABLE;
 
-	// copy pathname
-	strncpy(pathbuf, pathname, MAXPATHLEN);
-	pathbuf[MAXPATHLEN-1] = 0;
+	// copy pathname to fsipcbuf
+	strncpy(fsipcbuf->load.req_path, pathname, MAXPATHLEN);
+	fsipcbuf->load.req_path[MAXPATHLEN-1] = 0;
+	Debug("fsipcbuf.load.req_path: %p %s %s\n", &fsipcbuf->load.req_path, fsipcbuf->load.req_path, (void*)fsipcbuf);
 	// init stack
 	if ((r = init_stack(e, argv, (void*)(USTACKTOP - PGSIZE))) < 0) {
 		Debug("init stack failed, %e\n", r);
@@ -807,9 +808,6 @@ sys_exec(const char* pathname, const char*argv[])
 	free_user_vm(e);
 	if (debug)
 		Debug("Finish stack init\n");
-	// copy pathname to fsipcbuf
-	strncpy(fsipcbuf->load.req_path, pathbuf, MAXPATHLEN);
-	Debug("fsipcbuf.load.req_path: %p %s %s\n", &fsipcbuf->load.req_path, fsipcbuf->load.req_path, (void*)fsipcbuf);
 	// load elf
 	if ((r = fsipc(FSREQ_LOAD, fsipcbuf)) < 0) {
 		Debug("FS ipc load failed", r);

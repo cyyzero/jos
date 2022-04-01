@@ -116,3 +116,34 @@ spawn流程：
 ---
 
 pipe工作时，会给两个FD添加额外的data页，它们映射到同一个物理页。读写时通过这个共享的页来实现。
+
+---
+
+challenge: 实现unix的exec系统调用。
+
+首先，添加了sys_exec系统调用。函数签名为
+```c
+int sys_exec(const char* pathname, const char*argv[])
+```
+
+需要加载程序的段进入内存，这些逻辑无法由用户态完成，因为在执行时会替换自己的进程映像。在内核态完成的话，需要涉及与FS的通信，也面临一些问题。内核态通信无法自旋等待，这样会导致占用kernel_lock不退出，其余程序永远无法陷入内核。内核态通过sys_yield切换也无法保存内核态的上下文（因为不是每个进程有单独的内核栈，而且TF里只保存了用户态的状态）。
+
+所以，替换进程映像的工作主要交给FS来完成。FS新增一个`FSREQ_LOAD`请求，能够针对发送来的进程，替换它的代码段、数据段等。
+
+执行逻辑如下。
+
+1. 用户态程序调用`exec`，会通过`sys_exec`陷入内核。
+2. 如果内核测试FS不还未在recving状态，就重新调整EIP指向int指令，sys_yield切出。
+3. 标记当前进程状态为`ENV_NOT_RUNNABLE`
+4. 内核申请`UTEMP`一页，作为传给FS的fsipc页。在里面放入`pathname`。
+5. 内核根据argv初始化程序的栈。
+6. 内核清理用户态的内存也，除了用户态栈和标记为share的页（因为要共享FD）。
+7. 步骤2保证了当前FS在recving阶段。所以直接`ipc_send`。内核直接退出，当前进程不会接受FS的返回。如果FS加载失败，会直接把当前进程杀死。（这个语义和Unix不一样）。
+8. FS接受了发来的`FSREQ_LOAD`请求，把pathname拷贝到栈上，通过`sys_page_unmap`帮助对端进程释放`UTEMP`，
+9. 根据pathname寻找文件位置。
+10. 读取文件的ELF_header，判断MAGIC number，并读取program header。
+11. 遍历program header，读取这些段，并加载进对端进程的内存。
+12. 设置对端进程的eip为ELF header里的entry。并设置对端进程为`ENV_RUNNABLE`。
+13. 如果在FS端，上述流程没成功，就直接`sys_destroy`销毁对端进程。
+
+上述的实现需要允许FS对普通进程执行许多操作，如`sys_page_map`\`sys_page_unmap`\`sys_env_set_trapframe`等等。
