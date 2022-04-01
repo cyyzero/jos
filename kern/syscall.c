@@ -383,7 +383,7 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	}
 	srcpgdir = env->env_pgdir;
 	// allow FS map pages to any env
-	if (env->env_type == ENV_TYPE_FS) {
+	if (env->env_type == ENV_TYPE_FS && dstenvid != env->env_id) {
 		checkDstEnv = 0;
 	}
 
@@ -537,13 +537,13 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 static int
 sys_ipc_recv(void *dstva)
 {
-	static int visited;
-	if (!visited) {
-		// enable other user program running
-		if (envs[1].env_status == ENV_BEFORE_FS)
-			envs[1].env_status = ENV_RUNNABLE;
-		visited = 1;
-	}
+	// static int visited;
+	// if (!visited) {
+	// 	// enable other user program running
+	// 	if (envs[1].env_status == ENV_BEFORE_FS)
+	// 		envs[1].env_status = ENV_RUNNABLE;
+	// 	visited = 1;
+	// }
 	struct Env *cur;
 	int r;
 	cur = curenv;
@@ -619,10 +619,7 @@ ipc_send(envid_t to_env, uint32_t val, void *pg, int perm)
 		if (r == 0) {
 			break;
 		} else if (r == -E_IPC_NOT_RECV) {
-			Debug("Fs is not recving.");
-			curenv->env_tf.tf_eip -= 2;
-			sys_page_unmap(0, UTEMP);
-			sys_yield();
+			panic("FS is not recving");
 		} else {
 			log("send failed, eid: 0x%x, pg: %d, perm: 0x%x, err: %e \n", to_env, pg, perm, r);
 			return -E_FAULT;
@@ -664,6 +661,37 @@ fsipc(unsigned type, void *fsipcbuf)
 	return 0;
 }
 
+// free all user memory, except the shared pages and user stack
+static void
+free_user_vm(struct Env *e)
+{
+	pde_t *pd;
+	pte_t *pt;
+	pd = e->env_pgdir;
+	assert(pd);
+	for (int pdeno = 0; pdeno <= PDX(UTOP-1); ++pdeno) {
+		// if present, iterate each pte
+		pte_t pde = pd[pdeno];
+		if (pde & (PTE_P | PTE_U)) {
+			int entry_num = NPTENTRIES;
+			if (pdeno == PDX(UTOP-1)) {
+				entry_num = PTX(UTOP-1)+1;
+			}
+			pt = KADDR(PTE_ADDR(pde));
+			for (int pteno = 0; pteno < entry_num; ++pteno) {
+				if (PGADDR(pdeno, pteno, 0) == (void*)(USTACKTOP - PGSIZE) ||
+					PGADDR(pdeno, pteno, 0) == (void*)UTEMP) {
+					continue;
+				}
+				pte_t pte = pt[pteno];
+				if ((pte & (PTE_P | PTE_U)) && !(pte & PTE_SHARE)) {
+					page_remove(e->env_pgdir, PGADDR(pdeno, pteno, 0));
+				}
+			}
+		}
+	}
+}
+
 // Set up the initial stack page for the new child process with envid 'child'
 // using the arguments array pointed to by 'argv',
 // which is a null-terminated array of pointers to null-terminated strings.
@@ -672,7 +700,7 @@ fsipc(unsigned type, void *fsipcbuf)
 // to the initial stack pointer with which the child should start.
 // Returns < 0 on failure.
 static int
-init_stack_and_free_user_vm(struct Env *e, const char **argv, void *fsipcbuf)
+init_stack(struct Env *e, const char **argv, void *stack)
 {
 	cprintf("enter init stack\n");
 	size_t string_size;
@@ -691,7 +719,7 @@ init_stack_and_free_user_vm(struct Env *e, const char **argv, void *fsipcbuf)
 	// there later, then remap that page into the child environment
 	// at (USTACKTOP - PGSIZE).
 	// strings is the topmost thing on the stack.
-	string_store = fsipcbuf + PGSIZE - string_size;
+	string_store = stack + PGSIZE - string_size;
 	// argv is below that.  There's one argument pointer per argument, plus
 	// a null pointer.
 	argv_store = (uintptr_t*) (ROUNDDOWN(string_store, 4) - 4 * (argc + 1));
@@ -700,7 +728,7 @@ init_stack_and_free_user_vm(struct Env *e, const char **argv, void *fsipcbuf)
 
 	// Make sure that argv, strings, and the 2 words that hold 'argc'
 	// and 'argv' themselves will all fit in a single stack page.
-	if ((void*) (argv_store - 2) < fsipcbuf)
+	if ((void*) (argv_store - 2) < stack)
 		return -E_NO_MEM;
 
 
@@ -721,30 +749,25 @@ init_stack_and_free_user_vm(struct Env *e, const char **argv, void *fsipcbuf)
 	//	* Set *init_esp to the initial stack pointer for the child,
 	//	  (Again, use an address valid in the child's environment.)
 	for (i = 0; i < argc; i++) {
-		argv_store[i] = FSIPCBUF2USTACK(string_store);
+		argv_store[i] = (uintptr_t)string_store;
 		strcpy(string_store, argv[i]);
 		Debug("%dth argv %s", i, string_store);
 		string_store += strlen(argv[i]) + 1;
 	}
 	argv_store[argc] = 0;
 	Debug("string_store %p", string_store);
-	assert(string_store == fsipcbuf + PGSIZE);
+	assert(string_store == stack + PGSIZE);
 
-	argv_store[-1] = FSIPCBUF2USTACK(argv_store);
+	argv_store[-1] = (uintptr_t)argv_store;
 	argv_store[-2] = argc;
 
-	e->env_tf.tf_esp = FSIPCBUF2USTACK(&argv_store[-2]);
+	e->env_tf.tf_esp = (uintptr_t)(&argv_store[-2]);
 	Debug("env esp is %p", e->env_tf.tf_esp);
 
 	// free all previous user vm
-	// env_free_user_vm(e);
-	// After completing the stack, map it into the child's address space
-	// and unmap it from ours!
-	if ((r = sys_page_alloc(0, (void*) (USTACKTOP - PGSIZE), PTE_P | PTE_U | PTE_W)) < 0) {
-		return r;
-	}
-	memmove((void*) (USTACKTOP - PGSIZE), fsipcbuf, PGSIZE);
-	memset(fsipcbuf, 0, PGSIZE);
+	// // After completing the stack, map it into the child's address space
+	// memmove((void*) (USTACKTOP - PGSIZE), stack, PGSIZE);
+	// memset(stack, 0, PGSIZE);
 	return 0;
 }
 
@@ -752,9 +775,15 @@ init_stack_and_free_user_vm(struct Env *e, const char **argv, void *fsipcbuf)
 static int
 sys_exec(const char* pathname, const char*argv[])
 {
-	int r, len;
+	int r;
 	struct Env *e;
 	union Fsipc *fsipcbuf;
+	// if FS env is not recving, just back and try again
+	if (!envs[0].env_ipc_recving) {
+		// machine code `int 48` is 2 byte
+		curenv->env_tf.tf_eip -= 2;
+		sys_yield();
+	}
 	if ((r = sys_page_alloc(0, UTEMP, PTE_P | PTE_U | PTE_W)) < 0) {
 		goto error;
 	}
@@ -771,10 +800,11 @@ sys_exec(const char* pathname, const char*argv[])
 	strncpy(pathbuf, pathname, MAXPATHLEN);
 	pathbuf[MAXPATHLEN-1] = 0;
 	// init stack
-	if ((r = init_stack_and_free_user_vm(e, argv, (void*)fsipcbuf)) < 0) {
+	if ((r = init_stack(e, argv, (void*)(USTACKTOP - PGSIZE))) < 0) {
 		Debug("init stack failed, %e\n", r);
 		goto error;
 	}
+	free_user_vm(e);
 	if (debug)
 		Debug("Finish stack init\n");
 	// copy pathname to fsipcbuf

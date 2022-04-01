@@ -36,7 +36,7 @@ enum {
 	ENV_RUNNABLE,
 	ENV_RUNNING,
 	ENV_NOT_RUNNABLE,
-	ENV_BEFORE_FS,
+	// ENV_BEFORE_FS,
 };
 
 // Special environment types
