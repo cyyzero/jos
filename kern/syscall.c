@@ -538,13 +538,6 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 static int
 sys_ipc_recv(void *dstva)
 {
-	// static int visited;
-	// if (!visited) {
-	// 	// enable other user program running
-	// 	if (envs[1].env_status == ENV_BEFORE_FS)
-	// 		envs[1].env_status = ENV_RUNNABLE;
-	// 	visited = 1;
-	// }
 	struct Env *cur;
 	int r;
 	cur = curenv;
@@ -875,7 +868,7 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	}
 }
 
-uint32_t
+int32_t
 sysenter_wrapper(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t eip, uint32_t esp)
 {
 #define STORE_TF \
