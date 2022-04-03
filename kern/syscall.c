@@ -820,7 +820,7 @@ static int
 sys_time_msec(void)
 {
 	// LAB 6: Your code here.
-	panic("sys_time_msec not implemented");
+	return time_msec();
 }
 
 // Dispatches to the correct kernel function, passing the arguments.
@@ -863,6 +863,8 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		return sys_env_set_trapframe((envid_t)a1, (struct Trapframe*)a2);
 	case SYS_exec:
 		return sys_exec((const char*)a1, (const char**)a2);
+	case SYS_time_msec:
+		return sys_time_msec();
 	default:
 		return -E_INVAL;
 	}
@@ -929,6 +931,9 @@ curenv->env_tf.tf_eflags = read_eflags() | FL_IF;
 	case SYS_exec:
 		STORE_TF;
 		r = sys_exec((const char*)a1, (const char**)a2);
+	case SYS_time_msec:
+		STORE_TF;
+		r = sys_time_msec();
 	default:
 		r = -E_INVAL;
 	}

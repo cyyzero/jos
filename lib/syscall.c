@@ -210,5 +210,9 @@ sys_exec(const char *pathname, const char *argv[])
 unsigned int
 sys_time_msec(void)
 {
+#ifdef USE_SYSENTER
+	return sysenter(SYS_time_msec, 0, 0, 0, 0, 0);
+#else
 	return (unsigned int) syscall(SYS_time_msec, 0, 0, 0, 0, 0, 0);
+#endif
 }
