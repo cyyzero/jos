@@ -64,6 +64,9 @@ typedef uint16_t pci_product_id_t;
 	((((vid) & PCI_VENDOR_MASK) << PCI_VENDOR_SHIFT) |	\
 	 (((pid) & PCI_PRODUCT_MASK) << PCI_PRODUCT_SHIFT))	\
 
+#define PCI_VENDOR_INTEL 0x8086
+#define PCI_DEVICE_E1000 0x100e
+
 /*
  * Command and status register.
  */
