@@ -35,6 +35,27 @@ ps： Offset必须指向连续的DWORD，即第1:0位总是00（它们仍然是�
 
 ![PCI配置空间](img/pciConfigSpace.png "PCI配置空间")
 
+一共有6个BAR（Base Address Registers ）。BAR可用于保存设备使用的内存地址，或端口地址的偏移量。通常，内存地址BAR需要位于物理内存中，而I/O空间BAR可以驻留在任何内存地址（甚至超出物理内存）。
+
+Memory Space BAR layout：
+
+| Bits 31-4                    | Bit 3        | Bits 2-1 | Bit 0    |
+| ---------------------------- | ------------ | -------- | -------- |
+| 16-Byte Aligned Base Address | Prefetchable | Type     | Always 0 |
+
+I/O Space BAR Layout：
+
+| Bits 31-2                   | Bit 1    | Bit 0    |
+| --------------------------- | -------- | -------- |
+| 4-Byte Aligned Base Address | Reserved | Always 1 |
+
+Memory Space BAR Layout 的 Type 字段指定BAR的大小以及它在内存中的映射位置。如果它的值为0x0，则基址寄存器为 32 位宽，可以映射到 32 位内存空间中的任何位置。值 0x2 表示基址寄存器为 64 位宽，可以映射到 64位内存空间中的任何位置（一个 64 位基址寄存器占用 2 个可用的基址寄存器）。
+空间的大小可以用如下方法读取：
+
+1. 向寄存器写 0xFFFFFFFF；
+2. 读出寄存器的值，并取反；
+3. 再加 1 就是该空间的大小。
+
 ### JOS流程
 
 首先从0号bus开始，遍历0-31号设备和0-8号功能。如果设备是bridge，就遍历递归子树结构。如果是E1000设备，就进行初始化。
