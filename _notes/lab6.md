@@ -14,11 +14,13 @@ PCI（Peripheral Component Interconnect）是本地计算机总线，用于连�
 
 Host bridge直接产生一条PCI总线，为0号PCI总线。该总线还可以通过PCI桥拓展出其他总线。最终形成一个PCI树结构。
 
+PCI设备包括两类空间，一种是配置空间， CPU不能直接访问，访问这个空间，需要借助BIOS功能;另一种是普通的控制寄存器空间，这部分经过映射后，CPU可以直接访问控制。
+
 ### 软件
 
 PCI设备可以通过8bit的Bus Number，5bit的Device Number和3bit的Function Number来定位，简称BDF。因此，一个host bridge最多有256个总线，每个总线可有32个设备，多功能设备还支持8个子设备。
 
-每个设备都有自己的配置空间，总共256 字节。可以通过 IO 端口 `CONFIG_ADDRESS`（0xCF80） 和 `CONFIG_DATA`（0xCFC） 读取 PCI 配置空间。`CONFIG_ADDRESS `寄存器格式：
+每个设备都有自己的配置空间，总共256 字节。可以通过 IO 端口 `CONFIG_ADDRESS`（0xCF80） 和 `CONFIG_DATA`（0xCFC） 读取 PCI 配置空间。`CONFIG_ADDRESS`寄存器格式：
 
 | Bit 31     | Bits 30-24 | Bits 23-16 | Bits 15-11    | Bits 10-8       | Bits 7-0        |
 | ---------- | ---------- | ---------- | ------------- | --------------- | --------------- |
