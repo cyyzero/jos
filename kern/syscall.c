@@ -13,7 +13,7 @@
 #include <kern/console.h>
 #include <kern/sched.h>
 #include <kern/time.h>
-
+#include <kern/e1000.h>
 #include <kern/spinlock.h>
 
 #define debug 0
@@ -823,6 +823,15 @@ sys_time_msec(void)
 	return time_msec();
 }
 
+static int
+sys_net_try_send(uint8_t *buf, size_t length)
+{
+	if ((uint32_t)buf >= UTOP) {
+		return -E_INVAL;
+	}
+	return e1000_send(buf, length);
+}
+
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -865,6 +874,8 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		return sys_exec((const char*)a1, (const char**)a2);
 	case SYS_time_msec:
 		return sys_time_msec();
+	case SYS_net_try_send:
+		return sys_net_try_send((uint8_t*)a1, (size_t)a2);
 	default:
 		return -E_INVAL;
 	}
@@ -934,6 +945,9 @@ curenv->env_tf.tf_eflags = read_eflags() | FL_IF;
 	case SYS_time_msec:
 		STORE_TF;
 		r = sys_time_msec();
+	case SYS_net_try_send:
+		STORE_TF;
+		r = sys_net_try_send((uint8_t*)a1, (size_t)a2);
 	default:
 		r = -E_INVAL;
 	}

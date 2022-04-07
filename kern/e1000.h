@@ -210,6 +210,9 @@
 #define E1000_TCTL_NRTU   0x02000000    /* No Re-transmit on underrun */
 #define E1000_TCTL_MULR   0x10000000    /* Multiple request support */
 
+#define E1000_TXD_CMD_RS     0x08 /* Report Status */
+#define E1000_TXD_STAT_DD    0x01 /* Descriptor Done */
+
 #define E1000_TCTL_CT_ETHNET     0x00000100    /* collision threshold */
 #define E1000_TCTL_COLD_FULL_DUPLEX 0x00040000 
 #define E1000_TIPG_VALUE  ((6<<20)|(4 <<10) |10)
@@ -237,6 +240,7 @@ struct e1000_tx_desc {
 
 extern volatile uint8_t* io_base;
 
+int e1000_send(uint8_t *buf, size_t length);
 int e1000_attach(struct pci_func *f);
 
 #endif  // SOL >= 6

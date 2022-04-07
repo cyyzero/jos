@@ -1,6 +1,8 @@
 #include <kern/e1000.h>
 #include <kern/pmap.h>
 #include <kern/pci.h>
+#include <inc/string.h>
+#include <inc/error.h>
 
 // LAB 6: Your driver code here
 
@@ -31,17 +33,31 @@ gen_rw_ctrl_reg_func(16)
 gen_rw_ctrl_reg_func(32)
 gen_rw_ctrl_reg_func(64)
 
+static uint32_t
+read_tx_desc_tail()
+{
+    return read_ctrl_reg32(E1000_TDT);
+}
+
+static void
+write_tx_desc_tail(uint32_t tail)
+{
+    write_ctrl_reg32(E1000_TDT, tail);
+}
+
 static int
 tx_init()
 {
     assert((uint32_t)tx_desc_array % 16 == 0);
     for (int i = 0; i < E1000_TX_DESC_N; i++) {
         tx_desc_array[i].addr = PADDR(tx_buffer[i]);
-        tx_desc_array[i].length = E1000_TX_BUFFER_SIZE;
+        tx_desc_array[i].status = E1000_TXD_STAT_DD;
+        // tx_desc_array[i].length = E1000_TX_BUFFER_SIZE;
     }
 
     // set Transmit Descriptor Base Address
-    write_ctrl_reg32(E1000_TDBAL, (uint32_t)tx_desc_array);
+    write_ctrl_reg32(E1000_TDBAL, PADDR(tx_desc_array));
+    write_ctrl_reg32(E1000_TDBAH, 0);
     // set Transmit Descriptor Length. Must be 128-byte aligned.
     assert(sizeof(tx_desc_array) % 128 == 0);
     write_ctrl_reg32(E1000_TDLEN, sizeof(tx_desc_array));
@@ -59,12 +75,51 @@ tx_init()
 }
 
 int
+e1000_send(uint8_t *buf, size_t length)
+{
+    if (length > E1000_TX_BUFFER_SIZE) {
+        return -E_OVER_LENGTH;
+    }
+    size_t tail = read_tx_desc_tail();
+    if (!(tx_desc_array[tail].status & E1000_TXD_STAT_DD)) {
+        return -E_FULL_BUFFER;
+    }
+    memmove(tx_buffer[tail], buf, length);
+    // tx_desc_array[tail].addr is fixed
+    tx_desc_array[tail].length;
+    // set report bit
+    tx_desc_array[tail].cmd = E1000_TXD_CMD_RS;
+    // clear is done bit
+    tx_desc_array[tail].status = 0;
+
+    // if tail will be out of array, round it to zero
+    if (++tail == E1000_TX_DESC_N)
+        tail = 0;
+    write_tx_desc_tail(tail);
+    return 0;
+}
+
+static void
+tx_test()
+{
+    // const size_t len = 64;
+    uint8_t buf[64] = "abcdefgh";
+    int r;
+    for (int i = 0; i < 1000; i++) {
+        if ((r = e1000_send((uint8_t*)buf, 64)) < 0) {
+            cprintf("%d: send failed, %e\n", i, r);
+        }
+    }
+}
+
+int
 e1000_attach(struct pci_func *f)
 {
     pci_func_enable(f);
     io_base = mmio_map_region(f->reg_base[0], f->reg_size[0]);
     assert(read_ctrl_reg32(E1000_STATUS) == 0x80080783);
-    cprintf("e1000 status : 0x%x\n", read_ctrl_reg32(E1000_STATUS));
     tx_init();
+    cprintf("tx init finish\n");
+    tx_test();
     return 1;
 }
