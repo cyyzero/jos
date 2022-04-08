@@ -52,7 +52,6 @@ tx_init()
     for (int i = 0; i < E1000_TX_DESC_N; i++) {
         tx_desc_array[i].addr = PADDR(tx_buffer[i]);
         tx_desc_array[i].status = E1000_TXD_STAT_DD;
-        // tx_desc_array[i].length = E1000_TX_BUFFER_SIZE;
     }
 
     // set Transmit Descriptor Base Address
@@ -86,9 +85,9 @@ e1000_send(uint8_t *buf, size_t length)
     }
     memmove(tx_buffer[tail], buf, length);
     // tx_desc_array[tail].addr is fixed
-    tx_desc_array[tail].length;
+    tx_desc_array[tail].length = length;
     // set report bit
-    tx_desc_array[tail].cmd = E1000_TXD_CMD_RS;
+    tx_desc_array[tail].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
     // clear is done bit
     tx_desc_array[tail].status = 0;
 
@@ -120,6 +119,6 @@ e1000_attach(struct pci_func *f)
     assert(read_ctrl_reg32(E1000_STATUS) == 0x80080783);
     tx_init();
     cprintf("tx init finish\n");
-    tx_test();
+    // tx_test();
     return 1;
 }

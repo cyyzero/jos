@@ -221,8 +221,8 @@ int
 sys_net_try_send(const uint8_t* buf, size_t length)
 {
 #ifdef USE_SYSENTER
-	return sysenter(SYS_net_try_send, (uint32_t)buf, length, 0, 0, 0);
+	return sysenter(SYS_net_try_send, 1, (uint32_t)buf, length, 0, 0);
 #else
-	return syscall(SYS_net_try_send, (uint32_t)buf, length, 0, 0, 0, 0);
+	return syscall(SYS_net_try_send, 1, (uint32_t)buf, length, 0, 0, 0);
 #endif
 }
