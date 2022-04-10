@@ -13,13 +13,9 @@ output(envid_t ns_envid)
 	while (1) {
 		envid_t from;
 		int rsq, r;
-
-		if ((rsq = ipc_recv(&from, (void*)&nsipcbuf, NULL)) < 0) {
-			cprintf("ns_output recv from ns failed, fromID 0x%x, error %e\n", from, rsq);
-			continue;
-		}
-		if (rsq != NSREQ_OUTPUT) {
-			cprintf("ns_output recv unsupported rsq type: %x\n", rsq);
+		rsq = ipc_recv(&from, (void*)&nsipcbuf, NULL);
+		if (rsq != NSREQ_OUTPUT || from != ns_envid) {
+			cprintf("rsq is %x, from is %x\n", rsq, from);
 			continue;
 		}
 		int cnt = SEND_RETRY_TIME;

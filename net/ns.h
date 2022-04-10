@@ -11,7 +11,8 @@
 #define QUEUE_SIZE	20
 #define REQVA		(0x0ffff000 - QUEUE_SIZE * PGSIZE)
 
-#define SEND_RETRY_TIME 5
+#define SEND_RETRY_TIME 100
+#define RECV_RETRY_TIME 100
 
 /* timer.c */
 void timer(envid_t ns_envid, uint32_t initial_to);

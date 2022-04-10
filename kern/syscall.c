@@ -212,7 +212,6 @@ sys_env_set_status(envid_t envid, int status)
 		return -E_INVAL;
 	}
 	e->env_status = status;
-	Debug("eip is %p", e->env_tf.tf_eip);
 	return 0;
 }
 
@@ -832,6 +831,15 @@ sys_net_try_send(uint8_t *buf, size_t length)
 	return e1000_send(buf, length);
 }
 
+static int
+sys_net_try_recv(uint8_t* buf, size_t length)
+{
+	if ((uint32_t)buf >= UTOP) {
+		return -E_INVAL;
+	}
+	return e1000_recv(buf, length);
+}
+
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -876,6 +884,8 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		return sys_time_msec();
 	case SYS_net_try_send:
 		return sys_net_try_send((uint8_t*)a1, (size_t)a2);
+	case SYS_net_try_recv:
+		return sys_net_try_recv((uint8_t*)a1, (size_t)a2);
 	default:
 		return -E_INVAL;
 	}
@@ -948,6 +958,9 @@ curenv->env_tf.tf_eflags = read_eflags() | FL_IF;
 	case SYS_net_try_send:
 		STORE_TF;
 		r = sys_net_try_send((uint8_t*)a1, (size_t)a2);
+	case SYS_net_try_recv:
+		STORE_TF;
+		return sys_net_try_recv((uint8_t*)a1, (size_t)a2);
 	default:
 		r = -E_INVAL;
 	}

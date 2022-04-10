@@ -446,11 +446,11 @@ env_create(uint8_t *binary, enum EnvType type)
 	case ENV_TYPE_FS:
 		// ensure IOPL == CPL at user mode
 		e->env_tf.tf_eflags |= FL_IOPL_3;
-		e->env_type = type;
 		break;
 	default:
 		break;
 	}
+	e->env_type = type;
 }
 
 //

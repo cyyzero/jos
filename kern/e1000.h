@@ -182,6 +182,8 @@
 #define E1000_RFCTL    0x05008  /* Receive Filter Control*/
 #define E1000_MTA      0x05200  /* Multicast Table Array - RW Array */
 #define E1000_RA       0x05400  /* Receive Address - RW Array */
+#define E1000_RAL      0x05400
+#define E1000_RAH      0x05404
 #define E1000_VFTA     0x05600  /* VLAN Filter Table Array - RW Array */
 #define E1000_WUC      0x05800  /* Wakeup Control - RW */
 #define E1000_WUFC     0x05808  /* Wakeup Filter Control - RW */
@@ -210,6 +212,7 @@
 #define E1000_TCTL_NRTU   0x02000000    /* No Re-transmit on underrun */
 #define E1000_TCTL_MULR   0x10000000    /* Multiple request support */
 
+/* Transmit Descriptor bit definitions */
 #define E1000_TXD_CMD_EOP    0x01 /* End of Packet */
 #define E1000_TXD_CMD_RS     0x08 /* Report Status */
 #define E1000_TXD_STAT_DD    0x01 /* Descriptor Done */
@@ -218,8 +221,21 @@
 #define E1000_TCTL_COLD_FULL_DUPLEX 0x00040000 
 #define E1000_TIPG_VALUE  ((6<<20)|(4 <<10) |10)
 
+/* Receive Control */
+#define E1000_RCTL_EN             0x00000002    /* enable */
+#define E1000_RCTL_BAM            0x00008000    /* broadcast enable */
+#define E1000_RCTL_SECRC          0x04000000    /* Strip Ethernet CRC */
+
+/* Receive Descriptor bit definitions */
+#define E1000_RXD_STAT_DD       0x01    /* Descriptor Done */
+#define E1000_RXD_STAT_EOP      0x02    /* End of Packet */
+
 #define E1000_TX_DESC_N 64
 #define E1000_TX_BUFFER_SIZE 1536  // 1536 = 1024 + 512
+
+#define E1000_RX_DESC_N 256
+#define E1000_RX_BUFFER_SIZE 2048  // 1536 = 1024 + 512
+
 struct e1000_rx_desc {
     uint64_t addr;
     uint16_t length;
@@ -242,6 +258,7 @@ struct e1000_tx_desc {
 extern volatile uint8_t* io_base;
 
 int e1000_send(uint8_t *buf, size_t length);
+int e1000_recv(uint8_t *buf, size_t length);
 int e1000_attach(struct pci_func *f);
 
 #endif  // SOL >= 6
