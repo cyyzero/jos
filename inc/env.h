@@ -36,13 +36,13 @@ enum {
 	ENV_RUNNABLE,
 	ENV_RUNNING,
 	ENV_NOT_RUNNABLE,
-	// ENV_BEFORE_FS,
 };
 
 // Special environment types
 enum EnvType {
 	ENV_TYPE_USER = 0,
 	ENV_TYPE_FS,		// File system server
+	ENV_TYPE_NS,		// Network server
 };
 
 struct Env {

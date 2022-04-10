@@ -13,6 +13,7 @@
 #include <kern/picirq.h>
 #include <kern/cpu.h>
 #include <kern/spinlock.h>
+#include <kern/time.h>
 
 #define IA32_SYSENTER_CS  0x174
 #define IA32_SYSENTER_EIP 0x176
@@ -264,9 +265,16 @@ trap_dispatch(struct Trapframe *tf)
 	case T_SYSCALL:
 		tf->tf_regs.reg_eax = syscall(tf->tf_regs.reg_eax, tf->tf_regs.reg_edx, tf->tf_regs.reg_ecx, tf->tf_regs.reg_ebx, tf->tf_regs.reg_edi, tf->tf_regs.reg_esi);
 		return;
-	// Handle clock interrupts. Don't forget to acknowledge the
-	// interrupt using lapic_eoi() before calling the scheduler!
+	// Handle clock interrupts.
 	case IRQ_OFFSET + IRQ_TIMER:
+		// Add time tick increment to clock interrupts.
+		// Be careful! In multiprocessors, clock interrupts are
+		// triggered on every CPU.
+		if (thiscpu->cpu_id == 0) {
+			time_tick();
+		}
+		//Don't forget to acknowledge the interrupt using lapic_eoi() 
+		// before calling the scheduler!
 		lapic_eoi();
 		sched_yield();
 		return;
@@ -277,12 +285,10 @@ trap_dispatch(struct Trapframe *tf)
 	case IRQ_OFFSET + IRQ_SERIAL:
 		serial_intr();
 		return;
-	}
-
 	// Handle spurious interrupts
 	// The hardware sometimes raises these because of noise on the
 	// IRQ line or other reasons. We don't care.
-	if (tf->tf_trapno == IRQ_OFFSET + IRQ_SPURIOUS) {
+	case IRQ_OFFSET + IRQ_SPURIOUS:
 		cprintf("Spurious interrupt on irq 7\n");
 		print_trapframe(tf);
 		return;
@@ -323,7 +329,7 @@ trap(struct Trapframe *tf)
 
 	extern void sysenter_handler();
 	extern void sysenter_handler_end();
-	if (tf->tf_eip >= (uintptr_t)sysenter_handler && tf->tf_eip < (uintptr_t)sysenter_handler_end) {
+	if (tf->tf_eip >= (uintptr_t)sysenter_handler && tf->tf_eip <= (uintptr_t)sysenter_handler_end) {
 		if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
 			env_run(curenv);
 			return;

@@ -12,7 +12,8 @@
 #include <kern/syscall.h>
 #include <kern/console.h>
 #include <kern/sched.h>
-
+#include <kern/time.h>
+#include <kern/e1000.h>
 #include <kern/spinlock.h>
 
 #define debug 0
@@ -211,7 +212,6 @@ sys_env_set_status(envid_t envid, int status)
 		return -E_INVAL;
 	}
 	e->env_status = status;
-	Debug("eip is %p", e->env_tf.tf_eip);
 	return 0;
 }
 
@@ -537,13 +537,6 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 static int
 sys_ipc_recv(void *dstva)
 {
-	// static int visited;
-	// if (!visited) {
-	// 	// enable other user program running
-	// 	if (envs[1].env_status == ENV_BEFORE_FS)
-	// 		envs[1].env_status = ENV_RUNNABLE;
-	// 	visited = 1;
-	// }
 	struct Env *cur;
 	int r;
 	cur = curenv;
@@ -821,6 +814,32 @@ error:
 	return r;
 }
 
+// Return the current time.
+static int
+sys_time_msec(void)
+{
+	// LAB 6: Your code here.
+	return time_msec();
+}
+
+static int
+sys_net_try_send(uint8_t *buf, size_t length)
+{
+	if ((uint32_t)buf >= UTOP) {
+		return -E_INVAL;
+	}
+	return e1000_send(buf, length);
+}
+
+static int
+sys_net_try_recv(uint8_t* buf, size_t length)
+{
+	if ((uint32_t)buf >= UTOP) {
+		return -E_INVAL;
+	}
+	return e1000_recv(buf, length);
+}
+
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -861,12 +880,18 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		return sys_env_set_trapframe((envid_t)a1, (struct Trapframe*)a2);
 	case SYS_exec:
 		return sys_exec((const char*)a1, (const char**)a2);
+	case SYS_time_msec:
+		return sys_time_msec();
+	case SYS_net_try_send:
+		return sys_net_try_send((uint8_t*)a1, (size_t)a2);
+	case SYS_net_try_recv:
+		return sys_net_try_recv((uint8_t*)a1, (size_t)a2);
 	default:
 		return -E_INVAL;
 	}
 }
 
-uint32_t
+int32_t
 sysenter_wrapper(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t eip, uint32_t esp)
 {
 #define STORE_TF \
@@ -927,6 +952,15 @@ curenv->env_tf.tf_eflags = read_eflags() | FL_IF;
 	case SYS_exec:
 		STORE_TF;
 		r = sys_exec((const char*)a1, (const char**)a2);
+	case SYS_time_msec:
+		STORE_TF;
+		r = sys_time_msec();
+	case SYS_net_try_send:
+		STORE_TF;
+		r = sys_net_try_send((uint8_t*)a1, (size_t)a2);
+	case SYS_net_try_recv:
+		STORE_TF;
+		return sys_net_try_recv((uint8_t*)a1, (size_t)a2);
 	default:
 		r = -E_INVAL;
 	}

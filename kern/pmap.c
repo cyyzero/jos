@@ -648,7 +648,7 @@ mmio_map_region(physaddr_t pa, size_t size)
 	void *ret = (void*)base;
 	size = ROUNDUP(size, PGSIZE);
 	if (MMIOLIM - base < size) {
-		panic("MMIO map size if too large, base: %p, size: 0x%x", base, size);
+		panic("MMIO map size is too large, base: %p, size: 0x%x", base, size);
 	}
 	boot_map_region(kern_pgdir, base, size, pa, PTE_W|PTE_PCD|PTE_PWT);
 	base += size;

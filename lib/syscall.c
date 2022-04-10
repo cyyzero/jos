@@ -160,7 +160,11 @@ sys_env_set_status(envid_t envid, int status)
 int
 sys_env_set_trapframe(envid_t envid, struct Trapframe *tf)
 {
+#ifdef USE_SYSENTER
+	return sysenter(SYS_env_set_trapframe, 1, envid, (uint32_t)tf, 0, 0);
+#else
 	return syscall(SYS_env_set_trapframe, 1, envid, (uint32_t) tf, 0, 0, 0);
+#endif
 }
 
 int
@@ -203,3 +207,32 @@ sys_exec(const char *pathname, const char *argv[])
 #endif
 }
 
+unsigned int
+sys_time_msec(void)
+{
+#ifdef USE_SYSENTER
+	return sysenter(SYS_time_msec, 0, 0, 0, 0, 0);
+#else
+	return (unsigned int) syscall(SYS_time_msec, 0, 0, 0, 0, 0, 0);
+#endif
+}
+
+int
+sys_net_try_send(const uint8_t* buf, size_t length)
+{
+#ifdef USE_SYSENTER
+	return sysenter(SYS_net_try_send, 0, (uint32_t)buf, length, 0, 0);
+#else
+	return syscall(SYS_net_try_send, 0, (uint32_t)buf, length, 0, 0, 0);
+#endif
+}
+
+int
+sys_net_try_recv(uint8_t* buf, size_t length)
+{
+#ifdef USE_SYSENTER
+	return sysenter(SYS_net_try_recv, 0,  0, (uint32_t)buf, length, 0, 0);
+#else
+	return syscall(SYS_net_try_recv, 0, (uint32_t)buf, length, 0, 0, 0);
+#endif
+}
