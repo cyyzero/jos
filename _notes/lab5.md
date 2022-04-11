@@ -146,4 +146,4 @@ int sys_exec(const char* pathname, const char*argv[])
 12. 设置对端进程的eip为ELF header里的entry。并设置对端进程为`ENV_RUNNABLE`。
 13. 如果在FS端，上述流程没成功，就直接`sys_destroy`销毁对端进程。
 
-上述的实现需要允许FS对普通进程执行许多操作，如`sys_page_map`\`sys_page_unmap`\`sys_env_set_trapframe`等等。
+上述的实现需要允许FS对普通进程执行许多操作，如`sys_page_map`、`sys_page_unmap`、`sys_env_set_trapframe`等等。
