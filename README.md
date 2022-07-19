@@ -1,8 +1,10 @@
 # MIT 6.828
 
-课程主页 : [https://pdos.csail.mit.edu/6.828/2018/schedule.html](https://pdos.csail.mit.edu/6.828/2018/schedule.html)
+This is my implementation of the labs from MIT's operating system graduate class 6.828.
 
-## 进度
+Course schedule here [https://pdos.csail.mit.edu/6.828/2018/schedule.html](https://pdos.csail.mit.edu/6.828/2018/schedule.html)
+
+## labs
 
 - [x] lab 1
 - [x] lab 2
